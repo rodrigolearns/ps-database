@@ -1,0 +1,15 @@
+{
+  "projectId": "paperstacks",
+  "organization": "paperstacks",
+  "name": "PaperStacks Platform",
+  "regions": ["us-east-1"],
+  "db": {
+    "extensions": [
+      "uuid-ossp",
+      "pgcrypto"
+    ]
+  },
+  "local": {
+    "port": 54321
+  }
+} 

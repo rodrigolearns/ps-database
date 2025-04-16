@@ -1,0 +1,17 @@
+{
+  "name": "ps-database",
+  "version": "0.1.0",
+  "description": "Database service for PaperStacks platform",
+  "scripts": {
+    "migrate": "supabase db push",
+    "migrate:local": "supabase db reset",
+    "seed": "node ./scripts/seed.js",
+    "generate:types": "supabase gen types typescript --local > ../ps-frontend/src/types/supabase.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0"
+  },
+  "devDependencies": {
+    "supabase": "^1.115.4"
+  }
+} 
