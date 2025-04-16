@@ -51,3 +51,19 @@ CREATE TRIGGER update_wallet_balance_trigger
 AFTER INSERT ON "Wallet_Transactions"
 FOR EACH ROW
 EXECUTE FUNCTION update_wallet_balance_after_transaction();
+
+-- Trigger: Create wallet for new user automatically
+CREATE OR REPLACE FUNCTION initialize_user_wallet()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO "User_Wallet_Balances" (user_id, balance)
+  VALUES (NEW.user_id, 0)
+  ON CONFLICT (user_id) DO NOTHING;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS create_wallet_for_new_user ON "User_Accounts";
+CREATE TRIGGER create_wallet_for_new_user
+AFTER INSERT ON "User_Accounts"
+FOR EACH ROW
+EXECUTE FUNCTION initialize_user_wallet();

@@ -7,24 +7,24 @@ CREATE TABLE IF NOT EXISTS "Papers" (
   paper_id SERIAL PRIMARY KEY,
   title TEXT NOT NULL,
   abstract TEXT NOT NULL,
-  paperstack_doi TEXT,
-  preprint_doi TEXT,
-  preprint_source TEXT,
-  preprint_date DATE,
-  license TEXT,
-  storage_reference TEXT,
+  paperstack_doi TEXT, -- DOI assigned by PaperStacks
+  preprint_doi TEXT, -- DOI for the preprint, if applicable
+  preprint_source TEXT, -- Source of the preprint (e.g., arXiv, bioRxiv)
+  preprint_date DATE, -- Date the preprint was published
+  license TEXT, -- License under which the paper is published (e.g., CC BY 4.0)
+  storage_reference TEXT, -- Reference to the main paper file in storage, expected path format: papers/{user_id}/{year}/{month}/{paper_id}/{filename}
   is_peer_reviewed BOOLEAN DEFAULT false,
-  activity_id TEXT,
-  activity_type TEXT,
+  activity_id INTEGER, -- Foreign key referencing the associated Peer_Review_Activities.activity_id
+  activity_type TEXT, -- Type of the associated activity (e.g., pr_activity)
   uploaded_by INTEGER NOT NULL REFERENCES "User_Accounts"(user_id) ON DELETE CASCADE,
-  visual_abstract TEXT,
-  visual_abstract_caption TEXT,
+  visual_abstract_storage_reference TEXT, -- Reference to the visual abstract image in storage, expected path format: visual-abstracts/{user_id}/{year}/{month}/{paper_id}/{filename}
+  visual_abstract_caption JSONB DEFAULT '{}'::jsonb, -- JSONB data including caption, credits, etc.
   cited_sources JSONB DEFAULT '{}'::jsonb,
   supplementary_materials JSONB DEFAULT '[]'::jsonb,
   funding_info JSONB DEFAULT '[]'::jsonb,
   data_availability_statement TEXT,
   data_availability_url JSONB DEFAULT '{}'::jsonb,
-  embedding_vector FLOAT8[] DEFAULT '{}',
+  embedding_vector vector(1536) NULL, -- Vector embedding for the paper content, initially NULL and updated by background processes
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -35,22 +35,23 @@ COMMENT ON COLUMN "Papers".preprint_doi IS 'DOI for the preprint, if applicable'
 COMMENT ON COLUMN "Papers".preprint_source IS 'Source of the preprint, if applicable';
 COMMENT ON COLUMN "Papers".preprint_date IS 'Date the preprint was published, if applicable';
 COMMENT ON COLUMN "Papers".license IS 'License under which the paper is published';
-COMMENT ON COLUMN "Papers".storage_reference IS 'Reference to the paper file in storage';
+COMMENT ON COLUMN "Papers".storage_reference IS 'Reference to the paper file in storage, expected path format: papers/{user_id}/{year}/{month}/{paper_id}/{filename}';
 COMMENT ON COLUMN "Papers".is_peer_reviewed IS 'Indicates if the paper has been peer reviewed via a completed activity';
-COMMENT ON COLUMN "Papers".activity_id IS 'ID of the associated peer review activity';
-COMMENT ON COLUMN "Papers".activity_type IS 'Type of the associated activity';
-COMMENT ON COLUMN "Papers".uploaded_by IS 'Foreign key to User_Accounts for the user who uploaded the paper';
-COMMENT ON COLUMN "Papers".visual_abstract IS 'Path to visual abstract image';
-COMMENT ON COLUMN "Papers".visual_abstract_caption IS 'Caption for the visual abstract image';
+COMMENT ON COLUMN "Papers".activity_id IS 'Foreign key to the associated peer review activity ID';
+COMMENT ON COLUMN "Papers".activity_type IS 'Type of the associated activity (e.g., pr_activity)';
+COMMENT ON COLUMN "Papers".uploaded_by IS 'Foreign key to User_Accounts (integer user_id) for the user who uploaded the paper';
+COMMENT ON COLUMN "Papers".visual_abstract_storage_reference IS 'Reference to the visual abstract image, expected path format: visual-abstracts/{user_id}/{year}/{month}/{paper_id}/{filename}';
+COMMENT ON COLUMN "Papers".visual_abstract_caption IS 'JSONB data for the visual abstract including caption and metadata';
 COMMENT ON COLUMN "Papers".cited_sources IS 'JSON of sources cited in the paper';
-COMMENT ON COLUMN "Papers".supplementary_materials IS 'JSON array of supplementary materials';
-COMMENT ON COLUMN "Papers".funding_info IS 'JSON array of funding information';
+COMMENT ON COLUMN "Papers".supplementary_materials IS 'JSON array of supplementary materials (links, descriptions)';
+COMMENT ON COLUMN "Papers".funding_info IS 'JSON array of funding information (funder, grant ID)';
 COMMENT ON COLUMN "Papers".data_availability_statement IS 'Statement about the availability of data used in the paper';
-COMMENT ON COLUMN "Papers".data_availability_url IS 'JSON with info to access the data used in the paper';
-COMMENT ON COLUMN "Papers".embedding_vector IS 'Vector embedding for the paper; initially empty and updated by background processes';
-COMMENT ON COLUMN "Papers".created_at IS 'When the paper was created';
-COMMENT ON COLUMN "Papers".updated_at IS 'When the paper was last updated';
+COMMENT ON COLUMN "Papers".data_availability_url IS 'JSON with info (e.g., URL, repository) to access the data used in the paper';
+COMMENT ON COLUMN "Papers".embedding_vector IS 'Vector embedding for the paper; used for similarity searches and recommendations, initially NULL and filled by background process';
+COMMENT ON COLUMN "Papers".created_at IS 'Timestamp when the paper record was created';
+COMMENT ON COLUMN "Papers".updated_at IS 'Timestamp when the paper record was last updated';
 
+-- Function and Trigger to update updated_at timestamp on row update
 CREATE OR REPLACE FUNCTION update_papers_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -58,6 +59,7 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+
 DROP TRIGGER IF EXISTS update_papers_updated_at_trigger ON "Papers";
 CREATE TRIGGER update_papers_updated_at_trigger
 BEFORE UPDATE ON "Papers"
