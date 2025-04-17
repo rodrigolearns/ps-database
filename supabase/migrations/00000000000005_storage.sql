@@ -3,6 +3,24 @@
 -- Migration for File Storage for Papers and Visual Abstracts
 -- =============================================
 
+-- Create storage buckets for papers and visual abstracts
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES 
+  ('paper-submissions', 'paper-submissions', true, 52428800, -- 50MB limit
+   ARRAY['application/pdf', 'application/xml', 'text/xml', 'image/jpeg', 'image/png']::text[])
+ON CONFLICT (id) DO NOTHING;
+
+-- Create RLS policy for the paper-submissions bucket - enable public read
+CREATE POLICY "Public Read Access"
+  ON storage.objects FOR SELECT
+  USING (bucket_id = 'paper-submissions');
+
+-- Create RLS policy for the paper-submissions bucket - enable authenticated uploads
+CREATE POLICY "Authenticated User Upload Access"
+  ON storage.objects FOR INSERT
+  TO authenticated
+  WITH CHECK (bucket_id = 'paper-submissions');
+
 -- Create the File_Storage table for storing file references related to papers.
 CREATE TABLE IF NOT EXISTS "File_Storage" (
   file_id SERIAL PRIMARY KEY,
