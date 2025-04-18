@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS "Peer_Review_Activities" (
   flag_history JSONB DEFAULT '[]'::jsonb, -- Array of flags with type, timestamp, status, etc.
   moderation_state moderation_state NOT NULL DEFAULT 'none',
   reviewer_team_history JSONB DEFAULT '[]'::jsonb, -- Array of objects: each with userId, role, joinedAt, stageCompleted times
+  reviewer_team INTEGER[] DEFAULT '{}'::INTEGER[], -- Array of user_ids who joined the review team from the feed
   posted_at TIMESTAMPTZ, -- When the activity was posted to the feed
   completed_at TIMESTAMPTZ, -- When the activity was finalized
   super_admin_id INTEGER REFERENCES "User_Accounts"(user_id) ON DELETE SET NULL, -- Admin receiving leftover tokens
@@ -64,6 +65,7 @@ COMMENT ON COLUMN "Peer_Review_Activities".stage_deadline IS 'Deadline for the c
 COMMENT ON COLUMN "Peer_Review_Activities".flag_history IS 'History of flags raised during the activity';
 COMMENT ON COLUMN "Peer_Review_Activities".moderation_state IS 'Moderation status of the activity';
 COMMENT ON COLUMN "Peer_Review_Activities".reviewer_team_history IS 'History of reviewer team participation, with timestamps for joining and stage completion';
+COMMENT ON COLUMN "Peer_Review_Activities".reviewer_team IS 'Array of user_ids who have joined the reviewer team from the feed';
 COMMENT ON COLUMN "Peer_Review_Activities".posted_at IS 'When the activity was posted to the feed';
 COMMENT ON COLUMN "Peer_Review_Activities".completed_at IS 'When the activity was finalized';
 COMMENT ON COLUMN "Peer_Review_Activities".super_admin_id IS 'Super admin who receives leftover tokens upon activity completion';
