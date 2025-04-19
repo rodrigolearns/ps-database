@@ -58,18 +58,19 @@ BEGIN
   -- Begin transaction
   BEGIN
     -- 1. Insert paper record, now including authors
+    -- This populates `Papers.authors`, the source of truth for authorship.
     INSERT INTO "Papers" (
       title, abstract, license, preprint_doi, preprint_source, preprint_date,
       uploaded_by, storage_reference, visual_abstract_storage_reference,
       visual_abstract_caption, cited_sources, supplementary_materials,
       funding_info, data_availability_statement, data_availability_url,
-      authors
+      authors -- Include authors column
     ) VALUES (
       p_title, p_abstract, p_license, p_preprint_doi, p_preprint_source, p_preprint_date,
       p_uploaded_by, p_storage_reference, p_visual_abstract_storage_reference,
       p_visual_abstract_caption, p_cited_sources, p_supplementary_materials,
       p_funding_info, p_data_availability_statement, p_data_availability_url,
-      p_authors
+      p_authors -- Use the authors parameter
     ) RETURNING paper_id INTO v_paper_id;
     
     -- 2. Create peer review activity
