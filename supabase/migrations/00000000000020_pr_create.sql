@@ -210,4 +210,44 @@ BEGIN
   
   COMMIT;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER; 
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Function to check if a user is the creator or an author of the paper linked to an activity
+CREATE OR REPLACE FUNCTION is_author_or_creator(p_user_id INTEGER, p_activity_id INTEGER)
+RETURNS BOOLEAN AS $$
+DECLARE
+    v_creator_id INTEGER;
+    v_paper_id INTEGER;
+    v_is_author BOOLEAN := FALSE;
+    v_username TEXT;
+BEGIN
+    -- Get activity details
+    SELECT creator_id, paper_id INTO v_creator_id, v_paper_id
+    FROM "Peer_Review_Activities" WHERE activity_id = p_activity_id;
+
+    -- Check if user is the creator
+    IF v_creator_id = p_user_id THEN
+        RETURN TRUE;
+    END IF;
+
+    -- Get the username for the given user_id
+    SELECT username INTO v_username FROM "User_Accounts" WHERE user_id = p_user_id;
+    IF v_username IS NULL THEN
+         -- User not found or has no username, cannot be author via ps_username link
+         RETURN FALSE;
+    END IF;
+
+    -- Check if user's username exists in the paper's authors JSONB array
+    -- Ensure the authors field is not null before querying
+    SELECT EXISTS (
+        SELECT 1
+        FROM "Papers", jsonb_array_elements(authors) AS author
+        WHERE paper_id = v_paper_id 
+          AND authors IS NOT NULL
+          AND author->>'ps_username' = v_username
+    ) INTO v_is_author;
+
+    RETURN v_is_author;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER STABLE;
+COMMENT ON FUNCTION is_author_or_creator(INTEGER, INTEGER) IS 'Checks if a given user_id corresponds to the creator or an author (via ps_username match) of the paper associated with the activity_id. Returns TRUE if they are, FALSE otherwise.'; 
