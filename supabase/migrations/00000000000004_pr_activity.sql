@@ -127,3 +127,6 @@ CREATE TRIGGER update_template_updated_at_trigger
 BEFORE UPDATE ON "Peer_Review_Templates"
 FOR EACH ROW
 EXECUTE FUNCTION update_template_updated_at();
+
+-- Indexes for efficient querying
+CREATE INDEX IF NOT EXISTS idx_pr_activities_activity_uuid ON "Peer_Review_Activities" (activity_uuid);
