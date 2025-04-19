@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS "Papers" (
   paper_id SERIAL PRIMARY KEY,
   title TEXT NOT NULL,
   abstract TEXT NOT NULL,
+  authors JSONB DEFAULT '{}'::jsonb, -- JSONB array of authors with name, affiliation, email, ORCID, and importantly ps_username to map to PaperStacks user accounts
   paperstack_doi TEXT, -- DOI assigned by PaperStacks
   preprint_doi TEXT, -- DOI for the preprint, if applicable
   preprint_source TEXT, -- Source of the preprint (e.g., arXiv, bioRxiv)
@@ -30,6 +31,7 @@ CREATE TABLE IF NOT EXISTS "Papers" (
 );
 COMMENT ON TABLE "Papers" IS 'Academic papers submitted to the platform';
 COMMENT ON COLUMN "Papers".paper_id IS 'Primary key for the paper';
+COMMENT ON COLUMN "Papers".authors IS 'JSONB array of authors containing name, affiliation, email, ORCID, and ps_username field to map to PaperStacks user accounts';
 COMMENT ON COLUMN "Papers".paperstack_doi IS 'Digital Object Identifier assigned by PaperStacks';
 COMMENT ON COLUMN "Papers".preprint_doi IS 'DOI for the preprint, if applicable';
 COMMENT ON COLUMN "Papers".preprint_source IS 'Source of the preprint, if applicable';
