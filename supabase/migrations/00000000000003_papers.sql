@@ -15,8 +15,7 @@ CREATE TABLE IF NOT EXISTS "Papers" (
   license TEXT, -- License under which the paper is published (e.g., CC BY 4.0)
   storage_reference TEXT, -- Reference to the main paper file in storage, expected path format: papers/{user_id}/{year}/{month}/{paper_id}/{filename}
   is_peer_reviewed BOOLEAN DEFAULT false,
-  activity_id INTEGER, -- Foreign key referencing the associated Peer_Review_Activities.activity_id
-  activity_type TEXT, -- Type of the associated activity (e.g., pr_activity)
+  activity_uuids UUID[] DEFAULT '{}'::UUID[], -- Array of activity UUIDs this paper is associated with
   uploaded_by INTEGER NOT NULL REFERENCES "User_Accounts"(user_id) ON DELETE CASCADE,
   visual_abstract_storage_reference TEXT, -- Reference to the visual abstract image in storage, expected path format: visual-abstracts/{user_id}/{year}/{month}/{paper_id}/{filename}
   visual_abstract_caption JSONB DEFAULT '{}'::jsonb, -- JSONB data including caption, credits, etc.
@@ -39,8 +38,7 @@ COMMENT ON COLUMN "Papers".preprint_date IS 'Date the preprint was published, if
 COMMENT ON COLUMN "Papers".license IS 'License under which the paper is published';
 COMMENT ON COLUMN "Papers".storage_reference IS 'Reference to the paper file in storage, expected path format: papers/{user_id}/{year}/{month}/{paper_id}/{filename}';
 COMMENT ON COLUMN "Papers".is_peer_reviewed IS 'Indicates if the paper has been peer reviewed via a completed activity';
-COMMENT ON COLUMN "Papers".activity_id IS 'Foreign key to the associated peer review activity ID';
-COMMENT ON COLUMN "Papers".activity_type IS 'Type of the associated activity (e.g., pr_activity)';
+COMMENT ON COLUMN "Papers".activity_uuids IS 'Array of activity UUIDs this paper is associated with, supporting multiple activities per paper';
 COMMENT ON COLUMN "Papers".uploaded_by IS 'Foreign key to User_Accounts (integer user_id) for the user who uploaded the paper';
 COMMENT ON COLUMN "Papers".visual_abstract_storage_reference IS 'Reference to the visual abstract image, expected path format: visual-abstracts/{user_id}/{year}/{month}/{paper_id}/{filename}';
 COMMENT ON COLUMN "Papers".visual_abstract_caption IS 'JSONB data for the visual abstract including caption and metadata';

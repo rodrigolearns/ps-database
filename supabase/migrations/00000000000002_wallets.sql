@@ -11,6 +11,14 @@ EXCEPTION
 END $$;
 COMMENT ON TYPE transaction_type IS 'Types of transactions in the wallet system';
 
+-- Create ENUM for transaction origins
+DO $$ BEGIN
+  CREATE TYPE transaction_origin AS ENUM ('activity', 'superadmin', 'system');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+COMMENT ON TYPE transaction_origin IS 'Origin of the transaction (activity-related, superadmin, or system)';
+
 -- Create User_Wallet_Balances table
 CREATE TABLE IF NOT EXISTS "User_Wallet_Balances" (
   wallet_id SERIAL PRIMARY KEY,
@@ -28,12 +36,17 @@ CREATE TABLE IF NOT EXISTS "Wallet_Transactions" (
   related_user_id INTEGER REFERENCES "User_Accounts"(user_id) ON DELETE SET NULL,
   amount INTEGER NOT NULL,
   transaction_type transaction_type NOT NULL,
+  transaction_origin transaction_origin NOT NULL DEFAULT 'system',
+  superadmin_id INTEGER REFERENCES "User_Accounts"(user_id) ON DELETE SET NULL,
   description TEXT,
   timestamp TIMESTAMPTZ DEFAULT NOW(),
   related_activity_id INTEGER,
-  activity_type TEXT
+  related_activity_uuid UUID
 );
 COMMENT ON TABLE "Wallet_Transactions" IS 'Record of token movements in the platform';
+COMMENT ON COLUMN "Wallet_Transactions".transaction_origin IS 'Origin of the transaction (activity-related, superadmin, or system)';
+COMMENT ON COLUMN "Wallet_Transactions".superadmin_id IS 'Admin who authorized the transaction (for superadmin transactions)';
+COMMENT ON COLUMN "Wallet_Transactions".related_activity_uuid IS 'UUID of the related activity (if applicable)';
 
 -- Trigger: Update wallet balance after a transaction is inserted
 CREATE OR REPLACE FUNCTION update_wallet_balance_after_transaction()
