@@ -7,7 +7,6 @@ CREATE TABLE IF NOT EXISTS "Papers" (
   paper_id SERIAL PRIMARY KEY,
   title TEXT NOT NULL,
   abstract TEXT NOT NULL,
-  authors JSONB DEFAULT '{}'::jsonb, -- JSONB array of authors with name, affiliation, email, ORCID, and importantly ps_username to map to PaperStacks user accounts
   paperstack_doi TEXT, -- DOI assigned by PaperStacks
   preprint_doi TEXT, -- DOI for the preprint, if applicable
   preprint_source TEXT, -- Source of the preprint (e.g., arXiv, bioRxiv)
@@ -30,7 +29,6 @@ CREATE TABLE IF NOT EXISTS "Papers" (
 );
 COMMENT ON TABLE "Papers" IS 'Academic papers submitted to the platform';
 COMMENT ON COLUMN "Papers".paper_id IS 'Primary key for the paper';
-COMMENT ON COLUMN "Papers".authors IS 'JSONB array of authors containing name, affiliation, email, ORCID, and ps_username field to map to PaperStacks user accounts';
 COMMENT ON COLUMN "Papers".paperstack_doi IS 'Digital Object Identifier assigned by PaperStacks';
 COMMENT ON COLUMN "Papers".preprint_doi IS 'DOI for the preprint, if applicable';
 COMMENT ON COLUMN "Papers".preprint_source IS 'Source of the preprint, if applicable';
@@ -66,81 +64,5 @@ BEFORE UPDATE ON "Papers"
 FOR EACH ROW
 EXECUTE FUNCTION update_papers_updated_at();
 
--- ==============================================
--- Function to get all papers associated with a user (creator or author)
--- ==============================================
-CREATE OR REPLACE FUNCTION get_user_papers(p_user_id INTEGER)
-RETURNS TABLE (
-    -- Explicitly list all columns from Papers to ensure stable return type
-    paper_id INTEGER,
-    title TEXT,
-    abstract TEXT,
-    authors JSONB,
-    paperstack_doi TEXT,
-    preprint_doi TEXT,
-    preprint_source TEXT,
-    preprint_date DATE,
-    license TEXT,
-    storage_reference TEXT,
-    is_peer_reviewed BOOLEAN,
-    activity_uuids UUID[],
-    uploaded_by INTEGER,
-    visual_abstract_storage_reference TEXT,
-    visual_abstract_caption JSONB,
-    cited_sources JSONB,
-    supplementary_materials JSONB,
-    funding_info JSONB,
-    data_availability_statement TEXT,
-    data_availability_url JSONB,
-    embedding_vector vector(1536),
-    created_at TIMESTAMPTZ,
-    updated_at TIMESTAMPTZ,
-    -- Add the activity state
-    current_state TEXT
-) AS $$
-BEGIN
-    RETURN QUERY
-    SELECT
-        p.paper_id,
-        p.title,
-        p.abstract,
-        p.authors,
-        p.paperstack_doi,
-        p.preprint_doi,
-        p.preprint_source,
-        p.preprint_date,
-        p.license,
-        p.storage_reference,
-        p.is_peer_reviewed,
-        p.activity_uuids,
-        p.uploaded_by,
-        p.visual_abstract_storage_reference,
-        p.visual_abstract_caption,
-        p.cited_sources,
-        p.supplementary_materials,
-        p.funding_info,
-        p.data_availability_statement,
-        p.data_availability_url,
-        p.embedding_vector,
-        p.created_at,
-        p.updated_at,
-        -- Fetch current_state from the activity linked by the first UUID, if available
-        (SELECT pra.current_state::TEXT FROM "Peer_Review_Activities" pra WHERE pra.activity_uuid = p.activity_uuids[1] LIMIT 1)
-    FROM "Papers" p
-    WHERE
-        p.uploaded_by = p_user_id
-        OR (
-            p.authors IS NOT NULL AND
-            jsonb_path_exists(p.authors, '$[*] ? (@.userId == $userId)', jsonb_build_object('userId', p_user_id))
-           )
-    ORDER BY
-        p.updated_at DESC;
-END;
-$$ LANGUAGE plpgsql STABLE SECURITY DEFINER;
-
-COMMENT ON FUNCTION get_user_papers(INTEGER) IS 'Returns all papers where the user is either the creator (uploaded_by) or listed as a co-author (authors JSONB contains userId), along with the current state of the associated activity.';
-
 -- Indexes for efficient querying
 CREATE INDEX IF NOT EXISTS idx_papers_uploaded_by ON "Papers" (uploaded_by);
--- GIN index for querying the authors JSONB array
-CREATE INDEX IF NOT EXISTS idx_papers_authors_gin ON "Papers" USING GIN (authors jsonb_path_ops);

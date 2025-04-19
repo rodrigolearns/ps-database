@@ -2,6 +2,29 @@
 -- 00000000000011_wallet_functions.sql
 -- Functions for wallet operations
 -- =============================================
+-- Function to begin a transaction
+CREATE OR REPLACE FUNCTION begin_transaction()
+RETURNS void AS $$
+BEGIN
+  EXECUTE 'BEGIN';
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Function to commit a transaction
+CREATE OR REPLACE FUNCTION commit_transaction()
+RETURNS void AS $$
+BEGIN
+  EXECUTE 'COMMIT';
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Function to rollback a transaction
+CREATE OR REPLACE FUNCTION rollback_transaction()
+RETURNS void AS $$
+BEGIN
+  EXECUTE 'ROLLBACK';
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER; 
 
 -- Function to get user wallet balance
 CREATE OR REPLACE FUNCTION get_user_wallet_balance(p_user_id INTEGER)
