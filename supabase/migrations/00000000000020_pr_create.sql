@@ -20,7 +20,8 @@ CREATE OR REPLACE FUNCTION submit_paper_with_pr_activity(
   p_supplementary_materials JSONB,
   p_funding_info JSONB,
   p_data_availability_statement TEXT,
-  p_data_availability_url JSONB
+  p_data_availability_url JSONB,
+  p_authors JSONB
 )
 RETURNS JSONB AS $$
 DECLARE
@@ -56,17 +57,19 @@ BEGIN
   
   -- Begin transaction
   BEGIN
-    -- 1. Insert paper record
+    -- 1. Insert paper record, now including authors
     INSERT INTO "Papers" (
       title, abstract, license, preprint_doi, preprint_source, preprint_date,
       uploaded_by, storage_reference, visual_abstract_storage_reference,
       visual_abstract_caption, cited_sources, supplementary_materials,
-      funding_info, data_availability_statement, data_availability_url
+      funding_info, data_availability_statement, data_availability_url,
+      authors
     ) VALUES (
       p_title, p_abstract, p_license, p_preprint_doi, p_preprint_source, p_preprint_date,
       p_uploaded_by, p_storage_reference, p_visual_abstract_storage_reference,
       p_visual_abstract_caption, p_cited_sources, p_supplementary_materials,
-      p_funding_info, p_data_availability_statement, p_data_availability_url
+      p_funding_info, p_data_availability_statement, p_data_availability_url,
+      p_authors
     ) RETURNING paper_id INTO v_paper_id;
     
     -- 2. Create peer review activity
@@ -78,10 +81,9 @@ BEGIN
       'submitted', NOW() + INTERVAL '14 days', NOW()
     ) RETURNING activity_id, activity_uuid INTO v_activity_id, v_activity_uuid;
     
-    -- 3. Update paper with activity information
+    -- 3. Update paper with activity information (activity_id is deprecated, use activity_uuids)
     UPDATE "Papers"
-    SET activity_id = v_activity_id,
-        activity_uuids = array_append(ARRAY[]::UUID[], v_activity_uuid)
+    SET activity_uuids = array_append(activity_uuids, v_activity_uuid)
     WHERE paper_id = v_paper_id;
     
     -- 4. Create wallet transaction (token deduction)
