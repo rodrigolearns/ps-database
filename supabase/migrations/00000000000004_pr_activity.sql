@@ -43,11 +43,17 @@ CREATE TABLE IF NOT EXISTS "Peer_Review_Templates" (
 COMMENT ON TABLE "Peer_Review_Templates" IS 'Pre‑configured templates for peer review workflows';
 
 -- Seed the two example templates
-INSERT INTO "Peer_Review_Templates" (name, reviewer_count, review_rounds, total_tokens, tokens_by_rank)
+INSERT INTO "Peer_Review_Templates" (name, reviewer_count, review_rounds, total_tokens, tokens_by_rank, extra_tokens)
 VALUES
-  ('2‑round, 3‑reviewers, 8‑tokens', 3, 2, 8, '[3,3,2]'::jsonb),
-  ('3‑round, 4‑reviewers,13‑tokens', 4, 3, 13, '[4,4,3,2]'::jsonb)
-ON CONFLICT (name) DO NOTHING;
+  ('2-round, 3-reviewers, 10-tokens', 3, 2, 10, '[3,3,2]'::jsonb, 2),
+  ('3-round, 4-reviewers, 15-tokens', 4, 3, 15, '[4,4,3,2]'::jsonb, 2)
+ON CONFLICT (name) DO UPDATE SET
+  reviewer_count = EXCLUDED.reviewer_count,
+  review_rounds = EXCLUDED.review_rounds,
+  total_tokens = EXCLUDED.total_tokens,
+  tokens_by_rank = EXCLUDED.tokens_by_rank,
+  extra_tokens = EXCLUDED.extra_tokens,
+  updated_at = NOW();
 
 -- Main Peer Review Activities table
 CREATE TABLE IF NOT EXISTS "Peer_Review_Activities" (
