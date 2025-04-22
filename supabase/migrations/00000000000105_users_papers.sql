@@ -1,9 +1,9 @@
 -- =============================================
--- 00000000000105_update_user_papers_function.sql
--- Update helper function to get user papers using relational structure
+-- 00000000000105_users_papers.sql
+-- Defines get_user_papers function and User_Papers_View
 -- =============================================
 
--- Recreate user papers function using relational join and subquery
+-- Helper function to get papers uploaded by or authored by a specific user
 CREATE OR REPLACE FUNCTION get_user_papers(p_user_id INTEGER)
 RETURNS TABLE (
     paper_id        INTEGER,
@@ -86,16 +86,71 @@ $$ LANGUAGE plpgsql STABLE SECURITY DEFINER;
 COMMENT ON FUNCTION get_user_papers(INTEGER) IS
   'Returns papers uploaded by or authored by the given user, with ordered author names and current activity state.';
 
--- Recreate updated_at trigger for Papers table (idempotent)
-CREATE OR REPLACE FUNCTION update_papers_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at = NOW();
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
+-- =============================================
+-- CREATE VIEW User_Papers_View
+-- View combining Papers with Authors and current activity state
+-- =============================================
 
-DROP TRIGGER IF EXISTS update_papers_updated_at_trigger ON "Papers";
-CREATE TRIGGER update_papers_updated_at_trigger
-BEFORE UPDATE ON "Papers"
-FOR EACH ROW EXECUTE FUNCTION update_papers_updated_at(); 
+DROP VIEW IF EXISTS public."User_Papers_View";
+
+-- Create the View with correct column references and necessary joins
+CREATE OR REPLACE VIEW public."User_Papers_View" AS
+SELECT
+    p.paper_id,
+    p.title,
+    p.abstract,
+    p.paperstack_doi,
+    p.preprint_doi,
+    p.preprint_source,
+    p.preprint_date,
+    p.license,
+    p.storage_reference,
+    p.is_peer_reviewed,
+    p.activity_uuids,
+    p.uploaded_by,
+    p.visual_abstract_storage_reference,
+    p.visual_abstract_caption,
+    p.cited_sources,
+    p.supplementary_materials,
+    p.funding_info,
+    p.data_availability_statement,
+    p.data_availability_url,
+    p.embedding_vector,
+    p.created_at,
+    p.updated_at,
+    -- Aggregate author details into a JSONB array
+    -- Join with User_Accounts to get username for registered users
+    COALESCE(
+        (
+            SELECT jsonb_agg(
+                       jsonb_build_object(
+                           'name', a.full_name,
+                           'affiliations', a.affiliations,
+                           'email', a.email,
+                           'orcid', a.orcid,
+                           'psUsername', ua.username, -- Get username from User_Accounts
+                           'userId', a.ps_user_id,
+                           'author_order', pa.author_order,
+                           'contribution_group', pa.contribution_group,
+                           'author_role', pa.author_role
+                       ) ORDER BY pa.author_order
+                   )
+            FROM "Paper_Authors" pa
+            JOIN "Authors" a ON pa.author_id = a.author_id
+            -- Left join to User_Accounts to get username when ps_user_id exists
+            LEFT JOIN "User_Accounts" ua ON a.ps_user_id = ua.user_id
+            WHERE pa.paper_id = p.paper_id
+        ),
+        '[]'::jsonb -- Default to empty JSON array if no authors
+    ) AS authors,
+    -- Get the current state from the primary activity (first in array)
+    (
+        SELECT pra.current_state::TEXT
+        FROM "Peer_Review_Activities" pra
+        WHERE pra.activity_uuid = p.activity_uuids[1] -- Assuming first UUID is primary
+        LIMIT 1
+    ) AS current_state
+FROM "Papers" p;
+
+COMMENT ON VIEW public."User_Papers_View" IS
+  'View combining Paper details with aggregated author information (JSONB array) and the current state of the primary peer review activity.'; 
