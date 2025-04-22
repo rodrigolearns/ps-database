@@ -43,3 +43,37 @@ CREATE TABLE IF NOT EXISTS "Paper_Versions" (
   UNIQUE(paper_id, version_number)
 );
 COMMENT ON TABLE "Paper_Versions" IS 'All versions of a paper, including author revisions';
+
+-- =============================================
+-- View Creation
+-- =============================================
+
+-- View for user's review activities (completed and active)
+CREATE OR REPLACE VIEW "User_Review_Activities" AS
+SELECT 
+  rtm.user_id,
+  pra.activity_id,
+  pra.activity_uuid,
+  pra.paper_id,
+  p.title AS paper_title,
+  p.abstract,
+  rtm.status AS reviewer_status,
+  pra.current_state,
+  pra.stage_deadline,
+  rtm.joined_at,
+  pra.start_date,
+  pra.completed_at,
+  rtm.rank,
+  (SELECT COUNT(*) FROM "Review_Submissions" rs 
+   WHERE rs.activity_id = pra.activity_id AND rs.reviewer_id = rtm.user_id) AS reviews_submitted,
+  (SELECT MAX(rs.round_number) FROM "Review_Submissions" rs 
+   WHERE rs.activity_id = pra.activity_id AND rs.reviewer_id = rtm.user_id) AS last_round_completed
+FROM "Reviewer_Team_Members" rtm
+JOIN "Peer_Review_Activities" pra ON rtm.activity_id = pra.activity_id
+JOIN "Papers" p ON pra.paper_id = p.paper_id
+ORDER BY 
+  -- Active reviews first, ordered by deadline
+  CASE WHEN pra.completed_at IS NULL THEN 0 ELSE 1 END,
+  pra.stage_deadline ASC NULLS LAST,
+  rtm.joined_at DESC;
+COMMENT ON VIEW "User_Review_Activities" IS 'View of all peer review activities a user is participating in or has completed as a reviewer';

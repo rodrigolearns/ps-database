@@ -4,7 +4,9 @@
 -- =============================================
 
 -- Function to submit a paper with peer review activity
--- Now handles finding/creating authors and linking them via Paper_Authors
+-- NOTE: Accepts authors as JSONB input for convenience from the frontend,
+-- but internally finds/creates records in the relational "Authors" table
+-- and links them using the "Paper_Authors" join table.
 CREATE OR REPLACE FUNCTION submit_paper_with_pr_activity(
   p_title TEXT,
   p_abstract TEXT,
@@ -22,9 +24,6 @@ CREATE OR REPLACE FUNCTION submit_paper_with_pr_activity(
   p_funding_info JSONB,
   p_data_availability_statement TEXT,
   p_data_availability_url JSONB,
-  -- Authors JSONB array. Expected structure per author object:
-  -- { name(req), email(opt), orcid(opt), affiliations(opt,jsonb), ps_user_id(opt,int), 
-  --   author_order(req,int), contribution_group(opt,int), author_role(opt,text) }
   p_authors JSONB 
 )
 RETURNS JSONB AS $$

@@ -68,13 +68,10 @@ CREATE TABLE IF NOT EXISTS "Peer_Review_Activities" (
   stage_deadline TIMESTAMPTZ, -- Deadline for the current stage
   flag_history JSONB DEFAULT '[]'::jsonb, -- Array of flags with type, timestamp, status, etc.
   moderation_state moderation_state NOT NULL DEFAULT 'none',
-  reviewer_team_history JSONB DEFAULT '[]'::jsonb, -- Array of objects: each with userId, role, joinedAt, stageCompleted times
-  reviewer_team INTEGER[] DEFAULT '{}'::INTEGER[], -- Array of user_ids who joined the review team from the feed
   posted_at TIMESTAMPTZ, -- When the activity was posted to the feed
   start_date TIMESTAMPTZ, -- When reviewer team reached full size and review begins
   completed_at TIMESTAMPTZ, -- When the activity was finalized
   super_admin_id INTEGER REFERENCES "User_Accounts"(user_id) ON DELETE SET NULL, -- Admin receiving leftover tokens
-  created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 COMMENT ON TABLE "Peer_Review_Activities" IS 'Peer review activities for papers submitted to the platform.';
@@ -89,13 +86,10 @@ COMMENT ON COLUMN "Peer_Review_Activities".current_state IS 'Current stage of th
 COMMENT ON COLUMN "Peer_Review_Activities".stage_deadline IS 'Deadline for the current activity stage';
 COMMENT ON COLUMN "Peer_Review_Activities".flag_history IS 'History of flags raised during the activity';
 COMMENT ON COLUMN "Peer_Review_Activities".moderation_state IS 'Moderation status of the activity';
-COMMENT ON COLUMN "Peer_Review_Activities".reviewer_team_history IS 'History of reviewer team participation, with timestamps for joining and stage completion';
-COMMENT ON COLUMN "Peer_Review_Activities".reviewer_team IS 'Array of user_ids who have joined the reviewer team from the feed';
 COMMENT ON COLUMN "Peer_Review_Activities".posted_at IS 'When the activity was posted to the feed';
 COMMENT ON COLUMN "Peer_Review_Activities".start_date IS 'Timestamp when reviewer team reached full size and review begins';
 COMMENT ON COLUMN "Peer_Review_Activities".completed_at IS 'When the activity was finalized';
 COMMENT ON COLUMN "Peer_Review_Activities".super_admin_id IS 'Super admin who receives leftover tokens upon activity completion';
-COMMENT ON COLUMN "Peer_Review_Activities".created_at IS 'When the activity record was created';
 COMMENT ON COLUMN "Peer_Review_Activities".updated_at IS 'When the activity record was last updated';
 
 -- Function to update updated_at on activity updates
