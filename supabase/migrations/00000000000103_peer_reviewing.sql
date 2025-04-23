@@ -49,6 +49,7 @@ COMMENT ON TABLE "Paper_Versions" IS 'All versions of a paper, including author 
 -- =============================================
 
 -- View for user's review activities (completed and active)
+DROP VIEW IF EXISTS "User_Review_Activities";
 CREATE OR REPLACE VIEW "User_Review_Activities" AS
 SELECT 
   rtm.user_id,
@@ -56,7 +57,6 @@ SELECT
   pra.activity_uuid,
   pra.paper_id,
   p.title AS paper_title,
-  p.abstract,
   rtm.status AS reviewer_status,
   pra.current_state,
   pra.stage_deadline,
@@ -71,9 +71,11 @@ SELECT
 FROM "Reviewer_Team_Members" rtm
 JOIN "Peer_Review_Activities" pra ON rtm.activity_id = pra.activity_id
 JOIN "Papers" p ON pra.paper_id = p.paper_id
+-- NOTE: This view intentionally does NOT filter by status, allowing frontend to decide which statuses to show.
+-- It also does NOT include author details or abstract to keep it simpler.
+-- It might need further joins if more detailed info is needed directly from the view.
 ORDER BY 
-  -- Active reviews first, ordered by deadline
   CASE WHEN pra.completed_at IS NULL THEN 0 ELSE 1 END,
   pra.stage_deadline ASC NULLS LAST,
   rtm.joined_at DESC;
-COMMENT ON VIEW "User_Review_Activities" IS 'View of all peer review activities a user is participating in or has completed as a reviewer';
+COMMENT ON VIEW "User_Review_Activities" IS 'Basic view of peer review activities a user is associated with, regardless of status';
