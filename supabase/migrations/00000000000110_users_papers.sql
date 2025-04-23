@@ -119,7 +119,6 @@ SELECT
     p.created_at,
     p.updated_at,
     -- Aggregate author details into a JSONB array
-    -- Join with User_Accounts to get username for registered users
     COALESCE(
         (
             SELECT jsonb_agg(
@@ -128,7 +127,7 @@ SELECT
                            'affiliations', a.affiliations,
                            'email', a.email,
                            'orcid', a.orcid,
-                           'psUsername', ua.username, -- Get username from User_Accounts
+                           'psUsername', ua.username,
                            'userId', a.ps_user_id,
                            'author_order', pa.author_order,
                            'contribution_group', pa.contribution_group,
@@ -137,20 +136,17 @@ SELECT
                    )
             FROM "Paper_Authors" pa
             JOIN "Authors" a ON pa.author_id = a.author_id
-            -- Left join to User_Accounts to get username when ps_user_id exists
             LEFT JOIN "User_Accounts" ua ON a.ps_user_id = ua.user_id
             WHERE pa.paper_id = p.paper_id
         ),
-        '[]'::jsonb -- Default to empty JSON array if no authors
+        '[]'::jsonb
     ) AS authors,
-    -- Get the current state from the primary activity (first in array)
-    (
-        SELECT pra.current_state::TEXT
-        FROM "Peer_Review_Activities" pra
-        WHERE pra.activity_uuid = p.activity_uuids[1] -- Assuming first UUID is primary
-        LIMIT 1
-    ) AS current_state
-FROM "Papers" p;
+    -- Get the current state and ID from the primary activity (first in array)
+    pra.current_state::TEXT AS current_state,
+    pra.activity_id -- Added activity_id
+FROM "Papers" p
+-- Left join to get primary activity details using the first UUID
+LEFT JOIN "Peer_Review_Activities" pra ON pra.activity_uuid = p.activity_uuids[1];
 
 COMMENT ON VIEW public."User_Papers_View" IS
-  'View combining Paper details with aggregated author information (JSONB array) and the current state of the primary peer review activity.'; 
+  'View combining Paper details with aggregated author information (JSONB array) and the current state and ID of the primary peer review activity.'; 
