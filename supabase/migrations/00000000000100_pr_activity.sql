@@ -92,35 +92,19 @@ COMMENT ON COLUMN "Peer_Review_Activities".completed_at IS 'When the activity wa
 COMMENT ON COLUMN "Peer_Review_Activities".super_admin_id IS 'Super admin who receives leftover tokens upon activity completion';
 COMMENT ON COLUMN "Peer_Review_Activities".updated_at IS 'When the activity record was last updated';
 
--- Function to update updated_at on activity updates
-CREATE OR REPLACE FUNCTION update_activities_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at = NOW();
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
+-- Function update_activities_updated_at removed, using generic set_updated_at
 DROP TRIGGER IF EXISTS update_activities_updated_at_trigger ON "Peer_Review_Activities";
 CREATE TRIGGER update_activities_updated_at_trigger
 BEFORE UPDATE ON "Peer_Review_Activities"
 FOR EACH ROW
-EXECUTE FUNCTION update_activities_updated_at();
+EXECUTE FUNCTION public.set_updated_at();
 
--- Function to update template updated_at timestamp
-CREATE OR REPLACE FUNCTION update_template_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at = NOW();
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
+-- Function update_template_updated_at removed, using generic set_updated_at
 DROP TRIGGER IF EXISTS update_template_updated_at_trigger ON "Peer_Review_Templates";
 CREATE TRIGGER update_template_updated_at_trigger
 BEFORE UPDATE ON "Peer_Review_Templates"
 FOR EACH ROW
-EXECUTE FUNCTION update_template_updated_at();
+EXECUTE FUNCTION public.set_updated_at();
 
 -- Indexes for efficient querying
 CREATE INDEX IF NOT EXISTS idx_pr_activities_activity_uuid ON "Peer_Review_Activities" (activity_uuid);

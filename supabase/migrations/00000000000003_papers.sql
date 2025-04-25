@@ -49,20 +49,12 @@ COMMENT ON COLUMN "Papers".embedding_vector IS 'Vector embedding for the paper; 
 COMMENT ON COLUMN "Papers".created_at IS 'Timestamp when the paper record was created';
 COMMENT ON COLUMN "Papers".updated_at IS 'Timestamp when the paper record was last updated';
 
--- Function and Trigger to update updated_at timestamp on row update
-CREATE OR REPLACE FUNCTION update_papers_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at = NOW();
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
+-- Function update_papers_updated_at removed, using generic set_updated_at
 DROP TRIGGER IF EXISTS update_papers_updated_at_trigger ON "Papers";
 CREATE TRIGGER update_papers_updated_at_trigger
 BEFORE UPDATE ON "Papers"
 FOR EACH ROW
-EXECUTE FUNCTION update_papers_updated_at();
+EXECUTE FUNCTION public.set_updated_at();
 
 -- Indexes for efficient querying
 CREATE INDEX IF NOT EXISTS idx_papers_uploaded_by ON "Papers" (uploaded_by);

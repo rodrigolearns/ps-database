@@ -1,6 +1,6 @@
 -- =============================================
 -- 00000000000001_users.sql
--- Migration for User Accounts and User Preference Embeddings
+-- User Accounts and User Preference Embeddings
 -- =============================================
 
 -- Create an ENUM type for user roles
@@ -67,15 +67,8 @@ COMMENT ON COLUMN "User_Preference_Embeddings".created_at IS 'When the embedding
 COMMENT ON COLUMN "User_Preference_Embeddings".updated_at IS 'When the embedding was last updated';
 
 -- Trigger: update updated_at on User_Accounts before update
-CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at = NOW();
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
 DROP TRIGGER IF EXISTS update_user_accounts_updated_at ON "User_Accounts";
 CREATE TRIGGER update_user_accounts_updated_at
 BEFORE UPDATE ON "User_Accounts"
 FOR EACH ROW
-EXECUTE FUNCTION update_updated_at_column();
+EXECUTE FUNCTION public.set_updated_at();

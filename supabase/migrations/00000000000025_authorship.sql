@@ -20,19 +20,12 @@ COMMENT ON COLUMN "Authors".email IS 'Author email, unique where provided';
 COMMENT ON COLUMN "Authors".affiliations IS 'Author affiliations stored as a JSONB array'; -- Updated comment
 
 -- Add trigger for updated_at on Authors table
-CREATE OR REPLACE FUNCTION update_authors_updated_at() 
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = NOW();
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
+-- Function update_authors_updated_at removed, using generic set_updated_at
 DROP TRIGGER IF EXISTS update_authors_updated_at_trigger ON "Authors";
 CREATE TRIGGER update_authors_updated_at_trigger
 BEFORE UPDATE ON "Authors"
 FOR EACH ROW
-EXECUTE FUNCTION update_authors_updated_at();
+EXECUTE FUNCTION public.set_updated_at();
 
 -- Paper_Authors Join table
 CREATE TABLE IF NOT EXISTS "Paper_Authors" (
