@@ -1,5 +1,5 @@
 -- =============================================
--- 00000000000020_pr_create.sql
+-- 00000000000103_create_pr_activity.sql
 -- Submission + PR-Activity Creation Functions
 -- =============================================
 
