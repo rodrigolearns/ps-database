@@ -32,8 +32,8 @@ RETURNS INTEGER AS $$
 DECLARE
   v_balance INTEGER;
 BEGIN
-  SELECT balance INTO v_balance 
-  FROM "User_Wallet_Balances"
+  SELECT balance INTO v_balance
+  FROM user_wallet_balances
   WHERE user_id = p_user_id;
   
   RETURN COALESCE(v_balance, 0);
@@ -53,7 +53,7 @@ DECLARE
 BEGIN
   -- Verify the superadmin role
   SELECT (role = 'superadmin') INTO v_is_superadmin
-  FROM "User_Accounts"
+  FROM user_accounts
   WHERE user_id = p_superadmin_id;
   
   IF NOT v_is_superadmin THEN
@@ -70,7 +70,7 @@ BEGIN
     );
   END IF;
   
-  INSERT INTO "Wallet_Transactions" (
+  INSERT INTO wallet_transactions (
     user_id,
     amount,
     transaction_type,
@@ -116,7 +116,7 @@ DECLARE
 BEGIN
   -- Verify the superadmin role
   SELECT (role = 'superadmin') INTO v_is_superadmin
-  FROM "User_Accounts"
+  FROM user_accounts
   WHERE user_id = p_superadmin_id;
   
   IF NOT v_is_superadmin THEN
@@ -135,7 +135,7 @@ BEGIN
   
   -- Check if user has sufficient balance
   SELECT balance INTO v_balance 
-  FROM "User_Wallet_Balances"
+  FROM user_wallet_balances
   WHERE user_id = p_target_user_id;
   
   IF COALESCE(v_balance, 0) < p_amount THEN
@@ -145,7 +145,7 @@ BEGIN
     );
   END IF;
   
-  INSERT INTO "Wallet_Transactions" (
+  INSERT INTO wallet_transactions (
     user_id,
     amount,
     transaction_type,
@@ -187,7 +187,7 @@ DECLARE
   v_balance INTEGER;
 BEGIN
   SELECT balance INTO v_balance 
-  FROM "User_Wallet_Balances"
+  FROM user_wallet_balances
   WHERE user_id = p_user_id;
   
   RETURN COALESCE(v_balance, 0) >= p_amount;
@@ -208,7 +208,7 @@ BEGIN
     RETURN FALSE;
   END IF;
   
-  INSERT INTO "Wallet_Transactions" (
+  INSERT INTO wallet_transactions (
     user_id,
     amount,
     transaction_type,
@@ -252,7 +252,7 @@ BEGIN
     RETURN FALSE;
   END IF;
   
-  INSERT INTO "Wallet_Transactions" (
+  INSERT INTO wallet_transactions (
     user_id,
     amount,
     transaction_type,
