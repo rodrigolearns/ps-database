@@ -10,43 +10,43 @@ EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 COMMENT ON TYPE award_type IS 'Types of peer-review awards';
 
--- Award types table (optional metadata override)
-CREATE TABLE IF NOT EXISTS "Award_Types" (
+-- award_types table (optional metadata override)
+CREATE TABLE IF NOT EXISTS award_types (
   award_type     award_type PRIMARY KEY,
   description    TEXT NOT NULL,
   author_points  INTEGER NOT NULL,  -- points when awarded by the corresponding author
   reviewer_points INTEGER NOT NULL  -- points when awarded by other reviewers
 );
-COMMENT ON TABLE "Award_Types" IS 'Definitions for each award category';
-COMMENT ON COLUMN "Award_Types".author_points IS 'Potential token points awarded when given by the paper author';
-COMMENT ON COLUMN "Award_Types".reviewer_points IS 'Potential token points awarded when given by another reviewer';
+COMMENT ON TABLE award_types IS 'Definitions for each award category';
+COMMENT ON COLUMN award_types.author_points IS 'Potential token points awarded when given by the paper author';
+COMMENT ON COLUMN award_types.reviewer_points IS 'Potential token points awarded when given by another reviewer';
 
 -- Seed base descriptions & points
-INSERT INTO "Award_Types"(award_type, description, author_points, reviewer_points)
+INSERT INTO award_types(award_type, description, author_points, reviewer_points)
 VALUES
   ('helpfulness', 'Most helpful and applicable evaluation', 2, 1),
   ('clarity',     'Most clear and detailed assessment', 2, 1),
   ('challenger',  'Most critical and constructive critique', 2, 1)
 ON CONFLICT (award_type) DO NOTHING;
 
--- Awards given by authors or reviewers
-CREATE TABLE IF NOT EXISTS "Awards_Given" (
+-- awards_given by authors or reviewers
+CREATE TABLE IF NOT EXISTS awards_given (
   award_id       SERIAL PRIMARY KEY,
   activity_id    INTEGER NOT NULL
-    REFERENCES "Peer_Review_Activities"(activity_id) ON DELETE CASCADE,
+    REFERENCES peer_review_activities(activity_id) ON DELETE CASCADE,
   round_number   INTEGER NOT NULL, -- Store round number for context if needed
   giver_id       INTEGER NOT NULL
-    REFERENCES "User_Accounts"(user_id) ON DELETE SET NULL, -- Use SET NULL to keep award record if user deleted
+    REFERENCES user_accounts(user_id) ON DELETE SET NULL, -- Use SET NULL to keep award record if user deleted
   receiver_id    INTEGER NOT NULL
-    REFERENCES "User_Accounts"(user_id) ON DELETE CASCADE, -- Cascade delete if receiver deleted
+    REFERENCES user_accounts(user_id) ON DELETE CASCADE, -- Cascade delete if receiver deleted
   points_awarded INTEGER NOT NULL,  -- Points assigned based on award type and giver role (used for ranking)
   award_type     award_type NOT NULL,
   given_at       TIMESTAMPTZ DEFAULT NOW(),
   CHECK (giver_id <> receiver_id)
 );
-COMMENT ON TABLE "Awards_Given" IS 'Instances of awards bestowed during awarding stage, records potential points for ranking';
-COMMENT ON COLUMN "Awards_Given".points_awarded IS 'Potential points assigned based on award type and giver role (used for ranking)';
-COMMENT ON COLUMN "Awards_Given".round_number IS 'The review round during which the award relates to';
+COMMENT ON TABLE awards_given IS 'Instances of awards bestowed during awarding stage, records potential points for ranking';
+COMMENT ON COLUMN awards_given.points_awarded IS 'Potential points assigned based on award type and giver role (used for ranking)';
+COMMENT ON COLUMN awards_given.round_number IS 'The review round during which the award relates to';
 
 -- Function to record an award
 -- This function NO LONGER distributes tokens directly.
@@ -76,7 +76,7 @@ BEGIN
 
   -- Check activity state (e.g., should be in 'awarding' state)
   SELECT current_state INTO v_activity_state
-  FROM "Peer_Review_Activities"
+  FROM peer_review_activities
   WHERE activity_id = p_activity_id;
 
   -- Optional: Add check for activity state if awards are only allowed during a specific phase
@@ -89,7 +89,7 @@ BEGIN
   
   -- Check if award already given by this giver for this activity+round+type
   IF EXISTS (
-    SELECT 1 FROM "Awards_Given"
+    SELECT 1 FROM awards_given
     WHERE activity_id = p_activity_id
       AND round_number = p_round_number
       AND giver_id = p_giver_id
@@ -104,13 +104,13 @@ BEGIN
   -- Get points for this award type
   SELECT author_points, reviewer_points 
   INTO v_author_points, v_reviewer_points
-  FROM "Award_Types"
+  FROM award_types
   WHERE award_type = p_award_type;
   
   -- Determine if giver is the paper author (creator)
   SELECT (creator_id = p_giver_id)
   INTO v_is_author
-  FROM "Peer_Review_Activities"
+  FROM peer_review_activities
   WHERE activity_id = p_activity_id;
   
   -- Set points to record based on giver role
@@ -121,7 +121,7 @@ BEGIN
   END IF;
   
   -- Insert the award record
-  INSERT INTO "Awards_Given" (
+  INSERT INTO awards_given (
     activity_id, round_number, giver_id, receiver_id, 
     points_awarded, award_type
   ) VALUES (
@@ -173,7 +173,7 @@ BEGIN
   -- Get activity details
   SELECT activity_uuid, template_id, escrow_balance, current_state, super_admin_id
   INTO v_activity_uuid, v_template_record.template_id, v_escrow_balance, v_activity_record.current_state, v_super_admin_id
-  FROM "Peer_Review_Activities"
+  FROM peer_review_activities
   WHERE activity_id = p_activity_id;
 
   IF v_activity_record.current_state IS NULL THEN
@@ -191,7 +191,7 @@ BEGIN
 
   -- Get template details (specifically tokens_by_rank)
   SELECT tokens_by_rank INTO v_tokens_by_rank
-  FROM "Peer_Review_Templates"
+  FROM peer_review_templates
   WHERE template_id = v_template_record.template_id;
 
   IF v_tokens_by_rank IS NULL THEN
@@ -204,14 +204,14 @@ BEGIN
     SELECT 
       rtm.user_id,
       COALESCE(SUM(ag.points_awarded), 0) AS total_points
-    FROM "Reviewer_Team_Members" rtm
-    LEFT JOIN "Awards_Given" ag ON rtm.user_id = ag.receiver_id AND rtm.activity_id = ag.activity_id
+    FROM reviewer_team_members rtm
+    LEFT JOIN awards_given ag ON rtm.user_id = ag.receiver_id AND rtm.activity_id = ag.activity_id
     WHERE rtm.activity_id = p_activity_id
       AND rtm.status = 'joined' -- Only consider active/joined reviewers for ranking
     GROUP BY rtm.user_id
   )
-  -- 2. Rank reviewers and update the Reviewer_Team_Members table
-  UPDATE "Reviewer_Team_Members" AS rtm
+  -- 2. Rank reviewers and update the reviewer_team_members table
+  UPDATE reviewer_team_members AS rtm
   SET rank = r.final_rank
   FROM (
     SELECT 
@@ -226,7 +226,7 @@ BEGIN
   -- 3. Distribute rewards based on rank
   FOR v_ranked_reviewers IN
     SELECT user_id, rank
-    FROM "Reviewer_Team_Members"
+    FROM reviewer_team_members
     WHERE activity_id = p_activity_id
       AND rank IS NOT NULL
       AND status = 'joined' -- Ensure only currently joined members get rewards
@@ -280,7 +280,7 @@ BEGIN
   END IF;
 
   -- 5. Update activity status to completed
-  UPDATE "Peer_Review_Activities"
+  UPDATE peer_review_activities
   SET 
     escrow_balance = v_escrow_balance, -- Update with the final balance (should be 0 if super admin exists)
     current_state = 'completed',

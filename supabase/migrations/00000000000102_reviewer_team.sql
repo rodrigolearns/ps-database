@@ -15,10 +15,10 @@ EXCEPTION
 END $$;
 COMMENT ON TYPE reviewer_status IS 'Status of a reviewer in a peer review activity';
 
--- Create Reviewer Team Members table
-CREATE TABLE IF NOT EXISTS "Reviewer_Team_Members" (
-  activity_id INTEGER NOT NULL REFERENCES "Peer_Review_Activities"(activity_id) ON DELETE CASCADE,
-  user_id INTEGER NOT NULL REFERENCES "User_Accounts"(user_id) ON DELETE CASCADE,
+-- Create reviewer_team_members table
+CREATE TABLE IF NOT EXISTS reviewer_team_members (
+  activity_id INTEGER NOT NULL REFERENCES peer_review_activities(activity_id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES user_accounts(user_id) ON DELETE CASCADE,
   status reviewer_status NOT NULL DEFAULT 'joined',
   rank INTEGER, -- Null until assigned during final ranking stage
   joined_at TIMESTAMPTZ DEFAULT NOW(),
@@ -26,18 +26,18 @@ CREATE TABLE IF NOT EXISTS "Reviewer_Team_Members" (
   removed_reason TEXT, -- Why they were removed (if applicable)
   PRIMARY KEY (activity_id, user_id) -- A user can only be on a review team once
 );
-COMMENT ON TABLE "Reviewer_Team_Members" IS 'Reviewers who have joined a peer review activity';
-COMMENT ON COLUMN "Reviewer_Team_Members".activity_id IS 'Foreign key to the Peer_Review_Activities table';
-COMMENT ON COLUMN "Reviewer_Team_Members".user_id IS 'Foreign key to the User_Accounts table';
-COMMENT ON COLUMN "Reviewer_Team_Members".status IS 'Current status of the reviewer';
-COMMENT ON COLUMN "Reviewer_Team_Members".rank IS 'Final ranking position (determines token reward)';
-COMMENT ON COLUMN "Reviewer_Team_Members".joined_at IS 'When the reviewer joined the team';
-COMMENT ON COLUMN "Reviewer_Team_Members".rounds_completed IS 'Array of review round numbers the reviewer has completed';
-COMMENT ON COLUMN "Reviewer_Team_Members".removed_reason IS 'Reason provided when removing a reviewer';
+COMMENT ON TABLE reviewer_team_members IS 'Reviewers who have joined a peer review activity';
+COMMENT ON COLUMN reviewer_team_members.activity_id IS 'Foreign key to the peer_review_activities table';
+COMMENT ON COLUMN reviewer_team_members.user_id IS 'Foreign key to the user_accounts table';
+COMMENT ON COLUMN reviewer_team_members.status IS 'Current status of the reviewer';
+COMMENT ON COLUMN reviewer_team_members.rank IS 'Final ranking position (determines token reward)';
+COMMENT ON COLUMN reviewer_team_members.joined_at IS 'When the reviewer joined the team';
+COMMENT ON COLUMN reviewer_team_members.rounds_completed IS 'Array of review round numbers the reviewer has completed';
+COMMENT ON COLUMN reviewer_team_members.removed_reason IS 'Reason provided when removing a reviewer';
 
 -- Indexes for efficient querying
-CREATE INDEX IF NOT EXISTS idx_reviewer_team_user_id ON "Reviewer_Team_Members" (user_id);
-CREATE INDEX IF NOT EXISTS idx_reviewer_team_status ON "Reviewer_Team_Members" (status);
+CREATE INDEX IF NOT EXISTS idx_reviewer_team_user_id ON reviewer_team_members (user_id);
+CREATE INDEX IF NOT EXISTS idx_reviewer_team_status ON reviewer_team_members (status);
 
 -- Function to join a review team
 CREATE OR REPLACE FUNCTION join_review_team(
@@ -46,14 +46,14 @@ CREATE OR REPLACE FUNCTION join_review_team(
 )
 RETURNS JSONB AS $$
 DECLARE
-  v_activity_record "Peer_Review_Activities"%ROWTYPE;
-  v_template_record "Peer_Review_Templates"%ROWTYPE;
+  v_activity_record peer_review_activities%ROWTYPE;
+  v_template_record peer_review_templates%ROWTYPE;
   v_current_team_size INTEGER;
   v_is_author BOOLEAN;
 BEGIN
   -- Check if activity exists
   SELECT * INTO v_activity_record
-  FROM "Peer_Review_Activities"
+  FROM peer_review_activities
   WHERE activity_id = p_activity_id;
   
   IF v_activity_record IS NULL THEN
@@ -73,11 +73,11 @@ BEGIN
 
   -- Get template information
   SELECT * INTO v_template_record
-  FROM "Peer_Review_Templates"
+  FROM peer_review_templates
   WHERE template_id = v_activity_record.template_id;
 
   -- Check if user is already on the team
-  IF EXISTS (SELECT 1 FROM "Reviewer_Team_Members" WHERE activity_id = p_activity_id AND user_id = p_user_id) THEN
+  IF EXISTS (SELECT 1 FROM reviewer_team_members WHERE activity_id = p_activity_id AND user_id = p_user_id) THEN
     RETURN jsonb_build_object(
       'success', false, 
       'message', 'User is already on this review team'
@@ -95,7 +95,7 @@ BEGIN
 
   -- Check if team is already full
   SELECT COUNT(*) INTO v_current_team_size
-  FROM "Reviewer_Team_Members"
+  FROM reviewer_team_members
   WHERE activity_id = p_activity_id AND status = 'joined';
   
   IF v_current_team_size >= v_template_record.reviewer_count THEN
@@ -106,17 +106,17 @@ BEGIN
   END IF;
 
   -- Add user to the review team
-  INSERT INTO "Reviewer_Team_Members" (activity_id, user_id, status, joined_at)
+  INSERT INTO reviewer_team_members (activity_id, user_id, status, joined_at)
   VALUES (p_activity_id, p_user_id, 'joined', NOW());
 
   -- Check if this completes the team and should start the activity
   SELECT COUNT(*) INTO v_current_team_size
-  FROM "Reviewer_Team_Members"
+  FROM reviewer_team_members
   WHERE activity_id = p_activity_id AND status = 'joined';
   
   IF v_current_team_size = v_template_record.reviewer_count THEN
     -- Team is now full, update activity state
-    UPDATE "Peer_Review_Activities"
+    UPDATE peer_review_activities
     SET 
       current_state = 'review_round_1',
       start_date = NOW(),
@@ -156,8 +156,8 @@ BEGIN
     rtm.rank,
     rtm.rounds_completed,
     rtm.joined_at
-  FROM "Reviewer_Team_Members" rtm
-  JOIN "User_Accounts" ua ON rtm.user_id = ua.user_id
+  FROM reviewer_team_members rtm
+  JOIN user_accounts ua ON rtm.user_id = ua.user_id
   WHERE rtm.activity_id = p_activity_id
   ORDER BY rtm.joined_at ASC;
 END;
@@ -177,7 +177,7 @@ DECLARE
 BEGIN
   -- Get current status
   SELECT status INTO v_old_status
-  FROM "Reviewer_Team_Members"
+  FROM reviewer_team_members
   WHERE activity_id = p_activity_id AND user_id = p_user_id;
   
   IF v_old_status IS NULL THEN
@@ -189,11 +189,11 @@ BEGIN
 
   -- Update status with appropriate reason field
   IF p_new_status = 'removed' THEN
-    UPDATE "Reviewer_Team_Members"
+    UPDATE reviewer_team_members
     SET status = p_new_status, removed_reason = p_reason
     WHERE activity_id = p_activity_id AND user_id = p_user_id;
   ELSE
-    UPDATE "Reviewer_Team_Members"
+    UPDATE reviewer_team_members
     SET status = p_new_status
     WHERE activity_id = p_activity_id AND user_id = p_user_id;
   END IF;
@@ -214,15 +214,15 @@ CREATE OR REPLACE FUNCTION can_join_review_team(
 )
 RETURNS JSONB AS $$
 DECLARE
-  v_activity_record "Peer_Review_Activities"%ROWTYPE;
-  v_template_record "Peer_Review_Templates"%ROWTYPE;
+  v_activity_record peer_review_activities%ROWTYPE;
+  v_template_record peer_review_templates%ROWTYPE;
   v_current_team_size INTEGER;
   v_is_author BOOLEAN;
   v_is_member BOOLEAN;
 BEGIN
   -- Check if activity exists
   SELECT * INTO v_activity_record
-  FROM "Peer_Review_Activities"
+  FROM peer_review_activities
   WHERE activity_id = p_activity_id;
   
   IF v_activity_record IS NULL THEN
@@ -245,12 +245,12 @@ BEGIN
 
   -- Get template information
   SELECT * INTO v_template_record
-  FROM "Peer_Review_Templates"
+  FROM peer_review_templates
   WHERE template_id = v_activity_record.template_id;
 
   -- Check if user is already on the team
   SELECT EXISTS (
-    SELECT 1 FROM "Reviewer_Team_Members"
+    SELECT 1 FROM reviewer_team_members
     WHERE activity_id = p_activity_id AND user_id = p_user_id
   ) INTO v_is_member;
   
@@ -276,7 +276,7 @@ BEGIN
 
   -- Check if team is already full
   SELECT COUNT(*) INTO v_current_team_size
-  FROM "Reviewer_Team_Members"
+  FROM reviewer_team_members
   WHERE activity_id = p_activity_id AND status = 'joined';
   
   IF v_current_team_size >= v_template_record.reviewer_count THEN

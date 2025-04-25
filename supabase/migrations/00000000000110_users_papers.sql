@@ -36,11 +36,11 @@ BEGIN
   WITH relevant_papers AS (
     -- Select paper IDs where the user is the creator OR an author
     SELECT p_sub.paper_id
-    FROM "Papers" p_sub
+    FROM papers p_sub
     WHERE p_sub.uploaded_by = p_user_id
     OR EXISTS (
-        SELECT 1 FROM "Paper_Authors" pa_link
-        JOIN "Authors" a_link ON pa_link.author_id = a_link.author_id
+        SELECT 1 FROM paper_authors pa_link
+        JOIN authors a_link ON pa_link.author_id = a_link.author_id
         WHERE pa_link.paper_id = p_sub.paper_id
         AND a_link.ps_user_id = p_user_id
     )
@@ -70,13 +70,13 @@ BEGIN
     p.created_at,
     p.updated_at,
     array_agg(a.full_name ORDER BY pa.author_order) AS author_names,
-    (SELECT pra.current_state::TEXT FROM "Peer_Review_Activities" pra WHERE pra.activity_uuid = p.activity_uuids[1] LIMIT 1) AS current_state
-  FROM "Papers" p
+    (SELECT pra.current_state::TEXT FROM peer_review_activities pra WHERE pra.activity_uuid = p.activity_uuids[1] LIMIT 1) AS current_state
+  FROM papers p
   -- Join only the relevant papers identified in the CTE
   JOIN relevant_papers rp ON p.paper_id = rp.paper_id
   -- Left join authors to aggregate names
-  LEFT JOIN "Paper_Authors" pa ON pa.paper_id = p.paper_id
-  LEFT JOIN "Authors" a         ON a.author_id = pa.author_id
+  LEFT JOIN paper_authors pa ON pa.paper_id = p.paper_id
+  LEFT JOIN authors a         ON a.author_id = pa.author_id
   -- Group by paper to aggregate authors
   GROUP BY p.paper_id
   ORDER BY p.updated_at DESC;
@@ -87,14 +87,14 @@ COMMENT ON FUNCTION get_user_papers(INTEGER) IS
   'Returns papers uploaded by or authored by the given user, with ordered author names and current activity state.';
 
 -- =============================================
--- CREATE VIEW User_Papers_View
--- View combining Papers with Authors and current activity state
+-- CREATE VIEW user_papers_view
+-- View combining papers with authors and current activity state
 -- =============================================
 
-DROP VIEW IF EXISTS public."User_Papers_View";
+DROP VIEW IF EXISTS public.user_papers_view;
 
 -- Create the View with correct column references and necessary joins
-CREATE OR REPLACE VIEW public."User_Papers_View" AS
+CREATE OR REPLACE VIEW public.user_papers_view AS
 SELECT
     p.paper_id,
     p.title,
@@ -134,9 +134,9 @@ SELECT
                            'author_role', pa.author_role
                        ) ORDER BY pa.author_order
                    )
-            FROM "Paper_Authors" pa
-            JOIN "Authors" a ON pa.author_id = a.author_id
-            LEFT JOIN "User_Accounts" ua ON a.ps_user_id = ua.user_id
+            FROM paper_authors pa
+            JOIN authors a ON pa.author_id = a.author_id
+            LEFT JOIN user_accounts ua ON a.ps_user_id = ua.user_id
             WHERE pa.paper_id = p.paper_id
         ),
         '[]'::jsonb
@@ -144,9 +144,9 @@ SELECT
     -- Get the current state and ID from the primary activity (first in array)
     pra.current_state::TEXT AS current_state,
     pra.activity_id -- Added activity_id
-FROM "Papers" p
+FROM papers p
 -- Left join to get primary activity details using the first UUID
-LEFT JOIN "Peer_Review_Activities" pra ON pra.activity_uuid = p.activity_uuids[1];
+LEFT JOIN peer_review_activities pra ON pra.activity_uuid = p.activity_uuids[1];
 
-COMMENT ON VIEW public."User_Papers_View" IS
+COMMENT ON VIEW public.user_papers_view IS
   'View combining Paper details with aggregated author information (JSONB array) and the current state and ID of the primary peer review activity.'; 

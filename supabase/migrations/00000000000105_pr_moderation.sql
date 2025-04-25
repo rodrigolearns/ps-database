@@ -4,16 +4,16 @@
 -- =============================================
 
 -- Tracks scheduled deadline events and their status
-CREATE TABLE IF NOT EXISTS "Deadline_Events" (
+CREATE TABLE IF NOT EXISTS deadline_events (
   event_id      SERIAL PRIMARY KEY,
   activity_id   INTEGER NOT NULL
-    REFERENCES "Peer_Review_Activities"(activity_id) ON DELETE CASCADE,
+    REFERENCES peer_review_activities(activity_id) ON DELETE CASCADE,
   stage         TEXT NOT NULL,            -- e.g. 'review_round_1', 'author_response', etc.
   due_at        TIMESTAMPTZ NOT NULL,
   triggered_at  TIMESTAMPTZ,              -- when handler ran
   status        TEXT NOT NULL DEFAULT 'pending'  -- 'pending','reminded','escalated','completed'
 );
-COMMENT ON TABLE "Deadline_Events" IS 'Scheduled reminders/escalations for each stage deadline';
+COMMENT ON TABLE deadline_events IS 'Scheduled reminders/escalations for each stage deadline';
 
 -- Function to schedule a deadline event
 CREATE OR REPLACE FUNCTION schedule_deadline_event(
@@ -28,14 +28,14 @@ BEGIN
   v_due_at := NOW() + (p_days_from_now || ' days')::INTERVAL;
   
   -- Insert the deadline event
-  INSERT INTO "Deadline_Events" (
+  INSERT INTO deadline_events (
     activity_id, stage, due_at
   ) VALUES (
     p_activity_id, p_stage, v_due_at
   );
   
   -- Update the activity's stage deadline
-  UPDATE "Peer_Review_Activities"
+  UPDATE peer_review_activities
   SET stage_deadline = v_due_at
   WHERE activity_id = p_activity_id;
   
@@ -55,12 +55,12 @@ CREATE OR REPLACE FUNCTION advance_activity_stage(
 RETURNS BOOLEAN AS $$
 BEGIN
   -- Update the activity's current state
-  UPDATE "Peer_Review_Activities"
+  UPDATE peer_review_activities
   SET current_state = p_next_stage
   WHERE activity_id = p_activity_id;
   
   -- Mark current deadline as completed
-  UPDATE "Deadline_Events"
+  UPDATE deadline_events
   SET status = 'completed',
       triggered_at = NOW()
   WHERE activity_id = p_activity_id
