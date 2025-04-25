@@ -1,9 +1,10 @@
 -- =============================================
--- 00000000000105_users_papers.sql
--- Defines get_user_papers function and User_Papers_View
+-- 00000000000102_users_papers.sql
+-- Defines internal get_user_papers function
 -- =============================================
 
--- Helper function to get papers uploaded by or authored by a specific user
+-- Internal helper function to get papers uploaded by or authored by a specific user
+-- This version only returns the basic paper data and is used internally
 CREATE OR REPLACE FUNCTION get_user_papers(p_user_id INTEGER)
 RETURNS TABLE (
     paper_id        INTEGER,
@@ -84,69 +85,4 @@ END;
 $$ LANGUAGE plpgsql STABLE SECURITY DEFINER;
 
 COMMENT ON FUNCTION get_user_papers(INTEGER) IS
-  'Returns papers uploaded by or authored by the given user, with ordered author names and current activity state.';
-
--- =============================================
--- CREATE VIEW user_papers_view
--- View combining papers with authors and current activity state
--- =============================================
-
-DROP VIEW IF EXISTS public.user_papers_view;
-
--- Create the View with correct column references and necessary joins
-CREATE OR REPLACE VIEW public.user_papers_view AS
-SELECT
-    p.paper_id,
-    p.title,
-    p.abstract,
-    p.paperstack_doi,
-    p.preprint_doi,
-    p.preprint_source,
-    p.preprint_date,
-    p.license,
-    p.storage_reference,
-    p.is_peer_reviewed,
-    p.activity_uuids,
-    p.uploaded_by,
-    p.visual_abstract_storage_reference,
-    p.visual_abstract_caption,
-    p.cited_sources,
-    p.supplementary_materials,
-    p.funding_info,
-    p.data_availability_statement,
-    p.data_availability_url,
-    p.embedding_vector,
-    p.created_at,
-    p.updated_at,
-    -- Aggregate author details into a JSONB array
-    COALESCE(
-        (
-            SELECT jsonb_agg(
-                       jsonb_build_object(
-                           'name', a.full_name,
-                           'affiliations', a.affiliations,
-                           'email', a.email,
-                           'orcid', a.orcid,
-                           'psUsername', ua.username,
-                           'userId', a.ps_user_id,
-                           'author_order', pa.author_order,
-                           'contribution_group', pa.contribution_group,
-                           'author_role', pa.author_role
-                       ) ORDER BY pa.author_order
-                   )
-            FROM paper_authors pa
-            JOIN authors a ON pa.author_id = a.author_id
-            LEFT JOIN user_accounts ua ON a.ps_user_id = ua.user_id
-            WHERE pa.paper_id = p.paper_id
-        ),
-        '[]'::jsonb
-    ) AS authors,
-    -- Get the current state and ID from the primary activity (first in array)
-    pra.current_state::TEXT AS current_state,
-    pra.activity_id -- Added activity_id
-FROM papers p
--- Left join to get primary activity details using the first UUID
-LEFT JOIN peer_review_activities pra ON pra.activity_uuid = p.activity_uuids[1];
-
-COMMENT ON VIEW public.user_papers_view IS
-  'View combining Paper details with aggregated author information (JSONB array) and the current state and ID of the primary peer review activity.'; 
+  'Internal helper function that returns papers uploaded by or authored by the given user.';
