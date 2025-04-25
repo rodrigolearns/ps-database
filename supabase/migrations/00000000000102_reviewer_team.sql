@@ -75,8 +75,9 @@ BEGIN
     RETURN jsonb_build_object('success',false,'message','Activity not found');
   END IF;
 
-  -- Only accept joins when still in submitted
-  IF v_act.current_state <> 'submitted' THEN
+  -- Only accept joins when still in submitted state
+  -- Use explicit cast and comparison instead of string pattern matching
+  IF v_act.current_state <> 'submitted'::activity_state THEN
     RETURN jsonb_build_object('success',false,'message','Not accepting reviewers at this stage');
   END IF;
 
@@ -185,7 +186,7 @@ BEGIN
   IF NOT FOUND THEN
     RETURN jsonb_build_object('success',false,'canJoin',false,'message','Activity not found');
   END IF;
-  IF v_act.current_state <> 'submitted' THEN
+  IF v_act.current_state <> 'submitted'::activity_state THEN
     RETURN jsonb_build_object('success',true,'canJoin',false,'reason','activity_started');
   END IF;
   SELECT is_author_or_creator(p_user_id,p_activity_id) INTO v_is_auth;

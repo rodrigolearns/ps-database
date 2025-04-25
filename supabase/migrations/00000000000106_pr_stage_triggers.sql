@@ -3,26 +3,30 @@
 -- Automatic Stage Advancement for Peer Review Activities
 -- =============================================
 
--- 1. Function to advance activity state automatically
 CREATE OR REPLACE FUNCTION public.pr_advance_state()
 RETURNS TRIGGER AS $$
 DECLARE
-  v_aid    INT := COALESCE(
-                NEW.activity_id,
-                (SELECT activity_id
-                   FROM peer_review_activities
-                  WHERE paper_id = NEW.paper_id
-               ORDER BY created_at DESC
-                  LIMIT 1)
-              );
+  v_aid    INT;
   v_stats  RECORD;
   v_next   activity_state;
 BEGIN
-  IF v_aid IS NULL THEN
-    RETURN NEW;
+  -- 1) Figure out which activity we're talking about
+  IF TG_TABLE_NAME = 'paper_versions' THEN
+    SELECT pra.activity_id
+      INTO v_aid
+      FROM peer_review_activities pra
+     WHERE pra.paper_id = NEW.paper_id
+     ORDER BY pra.created_at DESC
+     LIMIT 1;
+  ELSE
+    v_aid := NEW.activity_id;
   END IF;
 
-  -- Gather current state, template rules, and counts
+  IF v_aid IS NULL THEN
+    RETURN NEW;  -- no activity found, bail out
+  END IF;
+
+  -- 2) Gather counts and template rules
   SELECT
     pra.current_state,
     prt.review_rounds,
@@ -43,6 +47,7 @@ BEGIN
    AND rtm.status = 'joined'
   LEFT JOIN review_submissions rs
     ON rs.activity_id = pra.activity_id
+    AND rs.reviewer_id = rtm.user_id
   LEFT JOIN author_responses ar
     ON ar.activity_id = pra.activity_id
   LEFT JOIN awards_given ag
@@ -50,7 +55,7 @@ BEGIN
   WHERE pra.activity_id = v_aid
   GROUP BY pra.current_state, prt.review_rounds, prt.reviewer_count;
 
-  -- Determine next state with simplified CASE
+  -- 3) Decide the next state
   v_next := CASE
     WHEN v_stats.current_state = 'submitted'
          AND v_stats.joined_reviewers >= v_stats.required_reviewers
@@ -79,17 +84,17 @@ BEGIN
     ELSE NULL
   END;
 
-  -- Apply next state and deadline if applicable
+  -- 4) If there *is* a next state, update it + set the new deadline
   IF v_next IS NOT NULL THEN
     UPDATE peer_review_activities
        SET current_state  = v_next,
            stage_deadline = CASE
-                             WHEN v_next   LIKE 'review_round_%'   THEN NOW() + INTERVAL '14 days'
-                             WHEN v_next   LIKE 'author_response_%' THEN NOW() + INTERVAL '14 days'
-                             WHEN v_next   = 'evaluation'          THEN NOW() + INTERVAL '7 days'
-                             WHEN v_next   = 'awarding'            THEN NOW() + INTERVAL '7 days'
-                             ELSE NULL
-                           END
+                              WHEN v_next::text LIKE 'review_round_%'   THEN NOW() + INTERVAL '14 days'
+                              WHEN v_next::text LIKE 'author_response_%' THEN NOW() + INTERVAL '14 days'
+                              WHEN v_next = 'evaluation'::activity_state THEN NOW() + INTERVAL '7 days'
+                              WHEN v_next = 'awarding'::activity_state   THEN NOW() + INTERVAL '7 days'
+                              ELSE NULL
+                            END
      WHERE activity_id = v_aid;
 
     INSERT INTO pr_activity_state_log (
@@ -109,10 +114,13 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+-- Then re-create your triggers exactly as before:
+DROP TRIGGER IF EXISTS trg_pr_on_join    ON reviewer_team_members;
+DROP TRIGGER IF EXISTS trg_pr_on_review  ON review_submissions;
+DROP TRIGGER IF EXISTS trg_pr_on_response ON author_responses;
+DROP TRIGGER IF EXISTS trg_pr_on_version ON paper_versions;
+DROP TRIGGER IF EXISTS trg_pr_on_award   ON awards_given;
 
--- 2. Triggers to fire the advancement function
-
--- After a reviewer joins
 CREATE TRIGGER trg_pr_on_join
   AFTER INSERT OR UPDATE OF status ON reviewer_team_members
   FOR EACH ROW
