@@ -1,9 +1,9 @@
 -- =============================================
--- 00000000000004_pr_activities.sql
--- Migration for Peer Review Activities Table
+-- 00000000000100_pr_activity.sql
+-- Peer Review Activities Table + Normalizations
 -- =============================================
 
--- Create ENUM type for current_state of activities
+-- 1. ENUMs for activity_state and moderation_state
 DO $$ BEGIN
   CREATE TYPE activity_state AS ENUM (
     'submitted',
@@ -15,96 +15,190 @@ DO $$ BEGIN
     'awarding',
     'completed'
   );
-EXCEPTION
-  WHEN duplicate_object THEN NULL;
-END $$;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 COMMENT ON TYPE activity_state IS 'Current stage of the peer review activity';
 
--- Create ENUM type for moderation state
 DO $$ BEGIN
-  CREATE TYPE moderation_state AS ENUM ('none', 'pending', 'resolved');
-EXCEPTION
-  WHEN duplicate_object THEN NULL;
-END $$;
+  CREATE TYPE moderation_state AS ENUM ('none','pending','resolved');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 COMMENT ON TYPE moderation_state IS 'Moderation state of the activity';
 
--- Create peer_review_templates table for peer review configurations
+
+-- 2. peer_review_templates (defines workflow presets)
 CREATE TABLE IF NOT EXISTS peer_review_templates (
-  template_id       SERIAL PRIMARY KEY,
-  name              TEXT NOT NULL UNIQUE,
-  reviewer_count    INTEGER NOT NULL,
-  review_rounds     INTEGER NOT NULL,
-  total_tokens      INTEGER NOT NULL,
-  tokens_by_rank    JSONB NOT NULL,    -- e.g. [3,3,2] or [4,4,3,2]
-  extra_tokens      INTEGER NOT NULL DEFAULT 2,
-  created_at        TIMESTAMPTZ DEFAULT NOW(),
-  updated_at        TIMESTAMPTZ DEFAULT NOW()
+  template_id     SERIAL PRIMARY KEY,
+  name            TEXT NOT NULL UNIQUE,
+  reviewer_count  INTEGER NOT NULL,
+  review_rounds   INTEGER NOT NULL,
+  total_tokens    INTEGER NOT NULL,
+  extra_tokens    INTEGER NOT NULL DEFAULT 2,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-COMMENT ON TABLE peer_review_templates IS 'Pre‑configured templates for peer review workflows';
+COMMENT ON TABLE peer_review_templates IS 'Pre-configured templates for peer review workflows';
 
--- Seed the two example templates
-INSERT INTO peer_review_templates (name, reviewer_count, review_rounds, total_tokens, tokens_by_rank, extra_tokens)
+-- 2a. token ranks normalized per reviewer position
+CREATE TABLE IF NOT EXISTS template_token_ranks (
+  template_id  INT NOT NULL REFERENCES peer_review_templates(template_id) ON DELETE CASCADE,
+  rank_pos     INT NOT NULL,
+  tokens       INT NOT NULL,
+  PRIMARY KEY (template_id, rank_pos)
+);
+COMMENT ON TABLE template_token_ranks IS 'Breakdown of token rewards by reviewer rank';
+
+-- 2b. Example seed for two default templates (adjust or add new UNION ALL clauses to change)
+INSERT INTO peer_review_templates(name, reviewer_count, review_rounds, total_tokens, extra_tokens)
 VALUES
-  ('2-round, 3-reviewers, 10-tokens', 3, 2, 10, '[3,3,2]'::jsonb, 2),
-  ('3-round, 4-reviewers, 15-tokens', 4, 3, 15, '[4,4,3,2]'::jsonb, 2)
-ON CONFLICT (name) DO UPDATE SET
-  reviewer_count = EXCLUDED.reviewer_count,
-  review_rounds = EXCLUDED.review_rounds,
-  total_tokens = EXCLUDED.total_tokens,
-  tokens_by_rank = EXCLUDED.tokens_by_rank,
-  extra_tokens = EXCLUDED.extra_tokens,
-  updated_at = NOW();
+  ('2-round,3-reviewers,10-tokens', 3, 2, 10, 2),
+  ('3-round,4-reviewers,15-tokens', 4, 3, 15, 2)
+ON CONFLICT(name) DO UPDATE
+  SET reviewer_count = EXCLUDED.reviewer_count,
+      review_rounds  = EXCLUDED.review_rounds,
+      total_tokens   = EXCLUDED.total_tokens,
+      extra_tokens   = EXCLUDED.extra_tokens,
+      updated_at     = NOW();
 
--- Main peer_review_activities table
-CREATE TABLE IF NOT EXISTS peer_review_activities (
-  activity_id SERIAL PRIMARY KEY,
-  activity_uuid UUID NOT NULL DEFAULT gen_random_uuid(), -- Universal identifier across activity types
-  paper_id INTEGER NOT NULL REFERENCES papers(paper_id) ON DELETE CASCADE,
-  creator_id INTEGER REFERENCES user_accounts(user_id) ON DELETE SET NULL,
-  template_id INTEGER NOT NULL REFERENCES peer_review_templates(template_id),
-  funding_amount INTEGER NOT NULL,
-  escrow_balance INTEGER NOT NULL,
-  current_state activity_state NOT NULL DEFAULT 'submitted',
-  stage_deadline TIMESTAMPTZ, -- Deadline for the current stage
-  flag_history JSONB DEFAULT '[]'::jsonb, -- Array of flags with type, timestamp, status, etc.
-  moderation_state moderation_state NOT NULL DEFAULT 'none',
-  posted_at TIMESTAMPTZ, -- When the activity was posted to the feed
-  start_date TIMESTAMPTZ, -- When reviewer team reached full size and review begins
-  completed_at TIMESTAMPTZ, -- When the activity was finalized
-  super_admin_id INTEGER REFERENCES user_accounts(user_id) ON DELETE SET NULL, -- Admin receiving leftover tokens
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-COMMENT ON TABLE peer_review_activities IS 'Peer review activities for papers submitted to the platform.';
-COMMENT ON COLUMN peer_review_activities.activity_id IS 'Primary key for the peer review activity';
-COMMENT ON COLUMN peer_review_activities.activity_uuid IS 'Universal UUID for linking to the activity across activity types';
-COMMENT ON COLUMN peer_review_activities.paper_id IS 'Foreign key to papers table';
-COMMENT ON COLUMN peer_review_activities.creator_id IS 'User who created the activity (corresponding author)';
-COMMENT ON COLUMN peer_review_activities.template_id IS 'Which review template configuration this activity uses';
-COMMENT ON COLUMN peer_review_activities.funding_amount IS 'Initial token escrow amount for the activity';
-COMMENT ON COLUMN peer_review_activities.escrow_balance IS 'Current token balance in the activity escrow';
-COMMENT ON COLUMN peer_review_activities.current_state IS 'Current stage of the peer review activity';
-COMMENT ON COLUMN peer_review_activities.stage_deadline IS 'Deadline for the current activity stage';
-COMMENT ON COLUMN peer_review_activities.flag_history IS 'History of flags raised during the activity';
-COMMENT ON COLUMN peer_review_activities.moderation_state IS 'Moderation status of the activity';
-COMMENT ON COLUMN peer_review_activities.posted_at IS 'When the activity was posted to the feed';
-COMMENT ON COLUMN peer_review_activities.start_date IS 'Timestamp when reviewer team reached full size and review begins';
-COMMENT ON COLUMN peer_review_activities.completed_at IS 'When the activity was finalized';
-COMMENT ON COLUMN peer_review_activities.super_admin_id IS 'Super admin who receives leftover tokens upon activity completion';
-COMMENT ON COLUMN peer_review_activities.updated_at IS 'When the activity record was last updated';
+-- 2c. Populate template_token_ranks via unnest WITH ORDINALITY
+INSERT INTO template_token_ranks(template_id, rank_pos, tokens)
+SELECT
+  t.template_id,
+  u.ordinality  AS rank_pos,
+  u.val         AS tokens
+FROM peer_review_templates t
+JOIN LATERAL (
+  SELECT ARRAY[3,3,2]::INT[] AS arr WHERE t.name = '2-round,3-reviewers,10-tokens'
+  UNION ALL
+  SELECT ARRAY[4,4,3,2]::INT[]         WHERE t.name = '3-round,4-reviewers,15-tokens'
+) AS cfg ON TRUE
+JOIN LATERAL unnest(cfg.arr) WITH ORDINALITY AS u(val, ordinality) ON TRUE
+ON CONFLICT DO NOTHING;
+-- Future-dev: add new template arrays here matching t.name
 
--- Function update_activities_updated_at removed, using generic set_updated_at
-DROP TRIGGER IF EXISTS update_activities_updated_at_trigger ON peer_review_activities;
-CREATE TRIGGER update_activities_updated_at_trigger
-BEFORE UPDATE ON peer_review_activities
-FOR EACH ROW
-EXECUTE FUNCTION public.set_updated_at();
 
--- Function update_template_updated_at removed, using generic set_updated_at
-DROP TRIGGER IF EXISTS update_template_updated_at_trigger ON peer_review_templates;
-CREATE TRIGGER update_template_updated_at_trigger
+-- 3. Generic updated_at trigger for auditing
+CREATE OR REPLACE FUNCTION public.set_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at := NOW();
+  RETURN NEW;
+END; $$ LANGUAGE plpgsql;
+
+-- apply to peer_review_templates
+CREATE TRIGGER trg_pr_templates_set_updated
 BEFORE UPDATE ON peer_review_templates
-FOR EACH ROW
-EXECUTE FUNCTION public.set_updated_at();
+FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
--- Indexes for efficient querying
-CREATE INDEX IF NOT EXISTS idx_pr_activities_activity_uuid ON peer_review_activities (activity_uuid);
+
+-- 4. Main peer_review_activities table
+CREATE TABLE IF NOT EXISTS peer_review_activities (
+  activity_id     SERIAL PRIMARY KEY,
+  activity_uuid   UUID NOT NULL DEFAULT gen_random_uuid(), -- cross-service identifier
+  paper_id        INT NOT NULL REFERENCES papers(paper_id) ON DELETE CASCADE,
+  creator_id      INT REFERENCES user_accounts(user_id) ON DELETE SET NULL,
+  template_id     INT NOT NULL REFERENCES peer_review_templates(template_id),
+  funding_amount  INT NOT NULL,
+  escrow_balance  INT NOT NULL,
+  current_state   activity_state NOT NULL DEFAULT 'submitted',
+  stage_deadline  TIMESTAMPTZ,
+  moderation_state moderation_state NOT NULL DEFAULT 'none',
+  posted_at       TIMESTAMPTZ DEFAULT NOW(),
+  start_date      TIMESTAMPTZ,
+  completed_at    TIMESTAMPTZ,
+  super_admin_id  INT REFERENCES user_accounts(user_id) ON DELETE SET NULL,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  CONSTRAINT chk_escrow_nonnegative      CHECK (escrow_balance >= 0),
+  CONSTRAINT chk_escrow_not_exceed_funding CHECK (escrow_balance <= funding_amount)
+);
+COMMENT ON TABLE peer_review_activities IS 'Peer review activities for papers';
+
+-- indexes for fast lookup
+CREATE INDEX IF NOT EXISTS idx_pr_activities_state_deadline
+  ON peer_review_activities(current_state, stage_deadline);
+CREATE INDEX IF NOT EXISTS idx_pr_activities_uuid
+  ON peer_review_activities(activity_uuid);
+
+-- updated_at trigger
+CREATE TRIGGER trg_pr_activities_set_updated
+BEFORE UPDATE ON peer_review_activities
+FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+
+-- 5. Flags table (after peer_review_activities exists)
+CREATE TABLE IF NOT EXISTS pr_activity_flags (
+  flag_id     SERIAL PRIMARY KEY,
+  activity_id INT NOT NULL REFERENCES peer_review_activities(activity_id) ON DELETE CASCADE,
+  flag_type   TEXT NOT NULL,
+  raised_by   INT REFERENCES user_accounts(user_id),
+  raised_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  status      moderation_state NOT NULL DEFAULT 'pending',
+  resolved_at TIMESTAMPTZ,
+  resolver    INT REFERENCES user_accounts(user_id)
+);
+COMMENT ON TABLE pr_activity_flags IS 'Individual flags raised on review activities';
+
+
+-- 6. Valid state transitions + enforcement trigger
+CREATE TABLE IF NOT EXISTS activity_state_transitions (
+  from_state activity_state NOT NULL,
+  to_state   activity_state NOT NULL,
+  PRIMARY KEY (from_state, to_state)
+);
+
+INSERT INTO activity_state_transitions(from_state, to_state) VALUES
+  ('submitted','review_round_1'),
+  ('review_round_1','author_response_1'),
+  ('author_response_1','review_round_2'),
+  ('review_round_2','author_response_2'),
+  ('author_response_2','review_round_3'),
+  ('review_round_3','awarding'),
+  ('awarding','completed')
+ON CONFLICT DO NOTHING;
+
+CREATE OR REPLACE FUNCTION enforce_activity_state_change()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM activity_state_transitions
+     WHERE from_state = OLD.current_state
+       AND to_state   = NEW.current_state
+  ) THEN
+    RAISE EXCEPTION 'Invalid state transition % → %', OLD.current_state, NEW.current_state;
+  END IF;
+  RETURN NEW;
+END; $$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_validate_pr_state
+BEFORE UPDATE OF current_state ON peer_review_activities
+FOR EACH ROW EXECUTE FUNCTION enforce_activity_state_change();
+
+
+-- 7. State-change audit log
+CREATE TABLE IF NOT EXISTS pr_activity_state_log (
+  log_id      SERIAL PRIMARY KEY,
+  activity_id INT NOT NULL REFERENCES peer_review_activities(activity_id),
+  old_state   activity_state NOT NULL,
+  new_state   activity_state NOT NULL,
+  changed_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  changed_by  INT NULL REFERENCES user_accounts(user_id) -- who triggered change
+);
+COMMENT ON TABLE pr_activity_state_log IS 'History of activity state changes';
+
+-- extend trigger to record state changes
+CREATE OR REPLACE FUNCTION enforce_activity_state_change()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM activity_state_transitions
+     WHERE from_state = OLD.current_state
+       AND to_state   = NEW.current_state
+  ) THEN
+    RAISE EXCEPTION 'Invalid state transition % → %', OLD.current_state, NEW.current_state;
+  END IF;
+
+  INSERT INTO pr_activity_state_log(activity_id, old_state, new_state, changed_by)
+    VALUES (OLD.activity_id, OLD.current_state, NEW.current_state, NULL);
+
+  RETURN NEW;
+END; $$ LANGUAGE plpgsql;

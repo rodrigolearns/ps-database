@@ -1,6 +1,6 @@
 -- =============================================
 -- 00000000000023_awarding.sql
--- Award types and awards given
+-- Award types and rewards given
 -- =============================================
 
 -- Reuse or create award_type enum if not exists
@@ -24,9 +24,9 @@ COMMENT ON COLUMN award_types.reviewer_points IS 'Potential token points awarded
 -- Seed base descriptions & points
 INSERT INTO award_types(award_type, description, author_points, reviewer_points)
 VALUES
-  ('helpfulness', 'Most helpful and applicable evaluation', 2, 1),
-  ('clarity',     'Most clear and detailed assessment', 2, 1),
-  ('challenger',  'Most critical and constructive critique', 2, 1)
+  ('helpfulness', 'Most helpful and applicable evaluation', 50, 50),
+  ('clarity',     'Most clear and detailed assessment', 50, 50),
+  ('challenger',  'Most critical and constructive critique', 75, 75)
 ON CONFLICT (award_type) DO NOTHING;
 
 -- awards_given by authors or reviewers
