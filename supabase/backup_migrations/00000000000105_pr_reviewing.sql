@@ -23,6 +23,8 @@ CREATE TABLE IF NOT EXISTS author_responses (
   response_id      SERIAL PRIMARY KEY,
   activity_id      INTEGER NOT NULL
     REFERENCES peer_review_activities(activity_id) ON DELETE CASCADE,
+  user_id          INTEGER NOT NULL
+    REFERENCES user_accounts(user_id) ON DELETE CASCADE,
   round_number     INTEGER NOT NULL,
   file_reference   TEXT NOT NULL,
   comments         JSONB,                      -- Per-reviewer point-by-point responses
@@ -100,7 +102,7 @@ SELECT
   ar.activity_id,
   'author_response'::TEXT    AS event_type,
   ar.submitted_at            AS event_timestamp,
-  NULL           ::INT       AS user_id,
+  ar.user_id                 AS user_id,
   ar.round_number            AS round_number,
   jsonb_build_object(
     'file_reference', ar.file_reference,

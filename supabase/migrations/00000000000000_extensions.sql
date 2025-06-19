@@ -1,34 +1,23 @@
--- Enable required extensions for PaperStacks
+-- =============================================
+-- 00000000000000_extensions.sql
+-- Extensions and Utility Functions
+-- =============================================
 
--- Enable pgvector extension for vector similarity search
-CREATE EXTENSION IF NOT EXISTS vector;
-
--- Enable UUID extension (if not already enabled by default)
+-- Enable required extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "vector";
+CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 
--- Enable pg_stat_statements for query performance monitoring
-CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+-- Enable Row Level Security by default
+ALTER DEFAULT PRIVILEGES REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
 
--- Enable pgcrypto extension if not already enabled
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-
--- Enable pg_cron extension if not already enabled
-CREATE EXTENSION IF NOT EXISTS pg_cron;
-
--- Enable http extension if not already enabled
-CREATE EXTENSION IF NOT EXISTS http;
-
--- Enable pg_net extension if not already enabled
-CREATE EXTENSION IF NOT EXISTS pg_net;
-
--- Comment explaining the purpose of this migration
-COMMENT ON EXTENSION vector IS 'vector data type and vector similarity search functions';
-
--- Generic function to set updated_at timestamp
-CREATE OR REPLACE FUNCTION public.set_updated_at()
+-- Generic utility function for updating timestamps
+CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
   NEW.updated_at := NOW();
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+COMMENT ON FUNCTION set_updated_at() IS 'Generic trigger function to update updated_at timestamp'; 

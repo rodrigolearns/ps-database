@@ -1,7 +1,30 @@
 -- =============================================
--- 00000000000003_wallet_functions.sql
--- Wallet Domain: Functions for Wallet Operations
+-- 00000000000011_wallet_functions.sql
+-- Functions for wallet operations
 -- =============================================
+-- Function to begin a transaction
+CREATE OR REPLACE FUNCTION begin_transaction()
+RETURNS void AS $$
+BEGIN
+  EXECUTE 'BEGIN';
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Function to commit a transaction
+CREATE OR REPLACE FUNCTION commit_transaction()
+RETURNS void AS $$
+BEGIN
+  EXECUTE 'COMMIT';
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Function to rollback a transaction
+CREATE OR REPLACE FUNCTION rollback_transaction()
+RETURNS void AS $$
+BEGIN
+  EXECUTE 'ROLLBACK';
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER; 
 
 -- Function to get user wallet balance
 CREATE OR REPLACE FUNCTION get_user_wallet_balance(p_user_id INTEGER)
@@ -10,14 +33,12 @@ DECLARE
   v_balance INTEGER;
 BEGIN
   SELECT balance INTO v_balance
-  FROM wallet_balances
+  FROM user_wallet_balances
   WHERE user_id = p_user_id;
   
   RETURN COALESCE(v_balance, 0);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
-
-COMMENT ON FUNCTION get_user_wallet_balance(INTEGER) IS 'Get the current wallet balance for a user';
 
 -- Function for superadmin to add tokens to user wallet
 CREATE OR REPLACE FUNCTION superadmin_add_tokens(
@@ -81,8 +102,6 @@ EXCEPTION
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-COMMENT ON FUNCTION superadmin_add_tokens(INTEGER, INTEGER, INTEGER, TEXT) IS 'Add tokens to a user wallet (superadmin only)';
-
 -- Function for superadmin to deduct tokens from user wallet
 CREATE OR REPLACE FUNCTION superadmin_deduct_tokens(
   p_superadmin_id INTEGER,
@@ -116,7 +135,7 @@ BEGIN
   
   -- Check if user has sufficient balance
   SELECT balance INTO v_balance 
-  FROM wallet_balances
+  FROM user_wallet_balances
   WHERE user_id = p_target_user_id;
   
   IF COALESCE(v_balance, 0) < p_amount THEN
@@ -158,8 +177,6 @@ EXCEPTION
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-COMMENT ON FUNCTION superadmin_deduct_tokens(INTEGER, INTEGER, INTEGER, TEXT) IS 'Deduct tokens from a user wallet (superadmin only)';
-
 -- Function to check if user has sufficient balance
 CREATE OR REPLACE FUNCTION has_sufficient_balance(
   p_user_id INTEGER,
@@ -170,30 +187,25 @@ DECLARE
   v_balance INTEGER;
 BEGIN
   SELECT balance INTO v_balance 
-  FROM wallet_balances
+  FROM user_wallet_balances
   WHERE user_id = p_user_id;
   
   RETURN COALESCE(v_balance, 0) >= p_amount;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-COMMENT ON FUNCTION has_sufficient_balance(INTEGER, INTEGER) IS 'Check if user has sufficient balance for a transaction';
-
 -- Activity reward function (for reviewers, etc.)
 CREATE OR REPLACE FUNCTION activity_reward_tokens(
   p_user_id INTEGER,
   p_amount INTEGER,
-  p_activity_id INTEGER DEFAULT NULL,
-  p_activity_uuid UUID DEFAULT NULL,
-  p_description TEXT DEFAULT 'Activity reward'
+  p_description TEXT,
+  p_related_activity_id INTEGER,
+  p_related_activity_uuid UUID
 )
-RETURNS JSONB AS $$
+RETURNS BOOLEAN AS $$
 BEGIN
   IF p_amount <= 0 THEN
-    RETURN jsonb_build_object(
-      'success', false,
-      'message', 'Reward amount must be positive'
-    );
+    RETURN FALSE;
   END IF;
   
   INSERT INTO wallet_transactions (
@@ -201,66 +213,43 @@ BEGIN
     amount,
     transaction_type,
     transaction_origin,
+    description,
     related_activity_id,
-    related_activity_uuid,
-    description
+    related_activity_uuid
   ) VALUES (
     p_user_id,
     p_amount,
     'credit',
     'activity',
-    p_activity_id,
-    p_activity_uuid,
-    p_description
+    p_description,
+    p_related_activity_id,
+    p_related_activity_uuid
   );
   
-  RETURN jsonb_build_object(
-    'success', true,
-    'message', 'Tokens rewarded successfully',
-    'amount', p_amount,
-    'user_id', p_user_id,
-    'new_balance', get_user_wallet_balance(p_user_id)
-  );
+  RETURN TRUE;
 EXCEPTION
   WHEN OTHERS THEN
-    RETURN jsonb_build_object(
-      'success', false,
-      'message', 'Error rewarding tokens: ' || SQLERRM
-    );
+    RETURN FALSE;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-COMMENT ON FUNCTION activity_reward_tokens(INTEGER, INTEGER, INTEGER, UUID, TEXT) IS 'Reward tokens to a user for activity participation';
-
--- Activity deduction function (for activity costs, penalties, etc.)
+-- Activity cost function (for creating activities)
 CREATE OR REPLACE FUNCTION activity_deduct_tokens(
   p_user_id INTEGER,
   p_amount INTEGER,
-  p_activity_id INTEGER DEFAULT NULL,
-  p_activity_uuid UUID DEFAULT NULL,
-  p_description TEXT DEFAULT 'Activity deduction'
+  p_description TEXT,
+  p_related_activity_id INTEGER,
+  p_related_activity_uuid UUID
 )
-RETURNS JSONB AS $$
-DECLARE
-  v_balance INTEGER;
+RETURNS BOOLEAN AS $$
 BEGIN
   IF p_amount <= 0 THEN
-    RETURN jsonb_build_object(
-      'success', false,
-      'message', 'Deduction amount must be positive'
-    );
+    RETURN FALSE;
   END IF;
   
   -- Check if user has sufficient balance
-  SELECT balance INTO v_balance 
-  FROM wallet_balances
-  WHERE user_id = p_user_id;
-  
-  IF COALESCE(v_balance, 0) < p_amount THEN
-    RETURN jsonb_build_object(
-      'success', false,
-      'message', 'Insufficient tokens in user wallet'
-    );
+  IF NOT has_sufficient_balance(p_user_id, p_amount) THEN
+    RETURN FALSE;
   END IF;
   
   INSERT INTO wallet_transactions (
@@ -268,33 +257,22 @@ BEGIN
     amount,
     transaction_type,
     transaction_origin,
+    description,
     related_activity_id,
-    related_activity_uuid,
-    description
+    related_activity_uuid
   ) VALUES (
     p_user_id,
     -p_amount,
     'debit',
     'activity',
-    p_activity_id,
-    p_activity_uuid,
-    p_description
+    p_description,
+    p_related_activity_id,
+    p_related_activity_uuid
   );
   
-  RETURN jsonb_build_object(
-    'success', true,
-    'message', 'Tokens deducted successfully',
-    'amount', p_amount,
-    'user_id', p_user_id,
-    'new_balance', get_user_wallet_balance(p_user_id)
-  );
+  RETURN TRUE;
 EXCEPTION
   WHEN OTHERS THEN
-    RETURN jsonb_build_object(
-      'success', false,
-      'message', 'Error deducting tokens: ' || SQLERRM
-    );
+    RETURN FALSE;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
-COMMENT ON FUNCTION activity_deduct_tokens(INTEGER, INTEGER, INTEGER, UUID, TEXT) IS 'Deduct tokens from a user for activity costs or penalties'; 
+$$ LANGUAGE plpgsql SECURITY DEFINER; 
