@@ -1,4 +1,162 @@
 -- =============================================
+-- 00000000000006_pr_core.sql
+-- Core PR Functions and Policies
+-- =============================================
+
+-- Simple function to deduct tokens for activities
+CREATE OR REPLACE FUNCTION activity_deduct_tokens(
+  p_user_id INTEGER,
+  p_amount INTEGER,
+  p_description TEXT,
+  p_activity_id INTEGER,
+  p_activity_uuid UUID
+) RETURNS BOOLEAN AS $$
+DECLARE
+  v_current_balance INTEGER;
+BEGIN
+  -- Get current balance with row lock
+  SELECT balance INTO v_current_balance
+  FROM user_wallet_balances
+  WHERE user_id = p_user_id
+  FOR UPDATE;
+
+  IF v_current_balance IS NULL OR v_current_balance < p_amount THEN
+    RETURN FALSE;
+  END IF;
+
+  -- Deduct tokens
+  UPDATE user_wallet_balances
+  SET balance = balance - p_amount
+  WHERE user_id = p_user_id;
+
+  -- Record transaction
+  INSERT INTO wallet_transactions (
+    user_id, amount, transaction_type,
+    description, related_activity_id, related_activity_uuid
+  ) VALUES (
+    p_user_id, -p_amount, 'debit',
+    p_description, p_activity_id, p_activity_uuid
+  );
+
+  RETURN TRUE;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Function to check if user is author or creator
+CREATE OR REPLACE FUNCTION is_author_or_creator(p_user_id INTEGER, p_activity_id INTEGER)
+RETURNS BOOLEAN AS $$
+DECLARE
+    v_creator_id INTEGER;
+    v_paper_id INTEGER;
+    v_is_author BOOLEAN := FALSE;
+BEGIN
+    SELECT creator_id, paper_id INTO v_creator_id, v_paper_id
+    FROM peer_review_activities WHERE activity_id = p_activity_id;
+
+    IF v_creator_id = p_user_id THEN
+        RETURN TRUE;
+    END IF;
+
+    SELECT EXISTS (
+        SELECT 1
+        FROM paper_authors pa
+        JOIN authors a ON pa.author_id = a.author_id
+        WHERE pa.paper_id = v_paper_id AND a.ps_user_id = p_user_id
+    ) INTO v_is_author;
+
+    RETURN v_is_author;
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER;
+
+-- RLS Policies
+
+-- Papers table policies
+ALTER TABLE papers ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view public papers"
+    ON papers FOR SELECT
+    USING (true);
+
+CREATE POLICY "Users can create papers if they have sufficient tokens"
+    ON papers FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM user_wallet_balances
+            WHERE user_id = auth.uid()
+            AND balance >= (
+                SELECT total_tokens
+                FROM peer_review_templates
+                WHERE template_id = 1 -- Default template, adjust as needed
+            )
+        )
+    );
+
+CREATE POLICY "Authors and creators can update their papers"
+    ON papers FOR UPDATE TO authenticated
+    USING (
+        uploaded_by = auth.uid() OR
+        EXISTS (
+            SELECT 1 FROM paper_authors pa
+            JOIN authors a ON pa.author_id = a.author_id
+            WHERE pa.paper_id = papers.paper_id
+            AND a.ps_user_id = auth.uid()
+        )
+    );
+
+-- PR Activities table policies
+ALTER TABLE peer_review_activities ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Anyone can view PR activities"
+    ON peer_review_activities FOR SELECT
+    USING (true);
+
+CREATE POLICY "Users can create PR activities if they have sufficient tokens"
+    ON peer_review_activities FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM user_wallet_balances
+            WHERE user_id = auth.uid()
+            AND balance >= funding_amount
+        )
+    );
+
+CREATE POLICY "Only creators can update their PR activities"
+    ON peer_review_activities FOR UPDATE TO authenticated
+    USING (creator_id = auth.uid());
+
+-- Authors table policies
+ALTER TABLE authors ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Anyone can view authors"
+    ON authors FOR SELECT
+    USING (true);
+
+CREATE POLICY "Users can create and update their own author profiles"
+    ON authors FOR ALL TO authenticated
+    USING (ps_user_id = auth.uid())
+    WITH CHECK (ps_user_id = auth.uid());
+
+-- Paper Authors table policies
+ALTER TABLE paper_authors ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Anyone can view paper authors"
+    ON paper_authors FOR SELECT
+    USING (true);
+
+CREATE POLICY "Paper creators can manage paper authors"
+    ON paper_authors FOR ALL TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM papers
+            WHERE papers.paper_id = paper_authors.paper_id
+            AND papers.uploaded_by = auth.uid()
+        )
+    );
+
+COMMENT ON FUNCTION activity_deduct_tokens(INTEGER, INTEGER, TEXT, INTEGER, UUID) IS 'Deducts tokens from a user wallet for PR activities';
+COMMENT ON FUNCTION is_author_or_creator(INTEGER, INTEGER) IS 'Checks if a given user_id corresponds to the creator or an author of the paper associated with the activity_id';
+
+-- =============================================
 -- 00000000000006_pr_core_domain.sql
 -- Peer Review Domain: Core Activities and Templates
 -- =============================================
