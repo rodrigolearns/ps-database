@@ -68,22 +68,58 @@ CREATE INDEX IF NOT EXISTS idx_wallet_transactions_timestamp ON wallet_transacti
 CREATE INDEX IF NOT EXISTS idx_wallet_transactions_activity_id ON wallet_transactions (related_activity_id);
 CREATE INDEX IF NOT EXISTS idx_wallet_transactions_activity_uuid ON wallet_transactions (related_activity_uuid);
 
--- Simple trigger to update wallet balance after transaction
-CREATE OR REPLACE FUNCTION update_wallet_balance_after_transaction()
+-- Enhanced function with transaction validation
+CREATE OR REPLACE FUNCTION validate_and_update_wallet_balance()
 RETURNS TRIGGER AS $$
+DECLARE
+  current_balance INTEGER;
 BEGIN
+  -- Prevent duplicate transactions (within 1 minute window)
+  IF EXISTS (
+    SELECT 1 FROM wallet_transactions 
+    WHERE user_id = NEW.user_id 
+    AND related_activity_id = NEW.related_activity_id
+    AND description = NEW.description
+    AND ABS(amount) = ABS(NEW.amount)
+    AND timestamp > NOW() - INTERVAL '1 minute'
+    AND transaction_id != NEW.transaction_id
+  ) THEN
+    RAISE EXCEPTION 'Duplicate transaction detected for user % with description: %', NEW.user_id, NEW.description;
+  END IF;
+  
+  -- Get current balance with row lock for debit transactions
+  IF NEW.transaction_type = 'debit' THEN
+    SELECT balance INTO current_balance 
+    FROM wallet_balances 
+    WHERE user_id = NEW.user_id
+    FOR UPDATE;
+    
+    -- Validate sufficient balance (amount is negative for debits)
+    IF current_balance + NEW.amount < 0 THEN
+      RAISE EXCEPTION 'Insufficient balance for user %. Current: %, Attempted debit: %', 
+        NEW.user_id, current_balance, ABS(NEW.amount);
+    END IF;
+  END IF;
+  
+  -- Update balance
   UPDATE wallet_balances
   SET balance = balance + NEW.amount,
       last_updated = NOW()
   WHERE user_id = NEW.user_id;
+  
+  -- Verify the update succeeded
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Wallet not found for user %', NEW.user_id;
+  END IF;
+  
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER update_wallet_balance_trigger
+CREATE TRIGGER validate_wallet_transaction_trigger
   AFTER INSERT ON wallet_transactions
   FOR EACH ROW
-  EXECUTE FUNCTION update_wallet_balance_after_transaction();
+  EXECUTE FUNCTION validate_and_update_wallet_balance();
 
 -- Simple trigger to create wallet for new user
 CREATE OR REPLACE FUNCTION initialize_user_wallet()
