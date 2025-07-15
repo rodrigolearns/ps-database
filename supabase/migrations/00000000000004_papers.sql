@@ -14,7 +14,6 @@ CREATE TABLE IF NOT EXISTS papers (
   preprint_date DATE,
   license TEXT,
   storage_reference TEXT,
-  is_peer_reviewed BOOLEAN DEFAULT false,
   activity_uuids UUID[] DEFAULT '{}'::UUID[],
   uploaded_by INTEGER NOT NULL REFERENCES user_accounts(user_id) ON DELETE CASCADE,
   visual_abstract_storage_reference TEXT,
@@ -39,7 +38,6 @@ COMMENT ON COLUMN papers.preprint_source IS 'Source of the preprint, if applicab
 COMMENT ON COLUMN papers.preprint_date IS 'Date the preprint was published, if applicable';
 COMMENT ON COLUMN papers.license IS 'License under which the paper is published';
 COMMENT ON COLUMN papers.storage_reference IS 'Reference to the paper file in storage';
-COMMENT ON COLUMN papers.is_peer_reviewed IS 'Indicates if the paper has been peer reviewed';
 COMMENT ON COLUMN papers.activity_uuids IS 'Array of activity UUIDs this paper is associated with';
 COMMENT ON COLUMN papers.uploaded_by IS 'Foreign key to user_accounts for the user who uploaded the paper';
 COMMENT ON COLUMN papers.visual_abstract_storage_reference IS 'Reference to the visual abstract image';
@@ -134,7 +132,6 @@ CREATE TABLE IF NOT EXISTS paper_authors (
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_papers_uploaded_by ON papers (uploaded_by);
 CREATE INDEX IF NOT EXISTS idx_papers_created_at ON papers (created_at);
-CREATE INDEX IF NOT EXISTS idx_papers_is_peer_reviewed ON papers (is_peer_reviewed);
 CREATE INDEX IF NOT EXISTS idx_papers_activity_uuids ON papers USING GIN (activity_uuids);
 CREATE INDEX IF NOT EXISTS idx_papers_embedding ON papers USING ivfflat (embedding_vector vector_cosine_ops) WITH (lists = 100);
 

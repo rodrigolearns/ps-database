@@ -56,8 +56,9 @@ DO $$ BEGIN
     'author_response_1',
     'review_round_2',
     'author_response_2',
-    'evaluation',
+    'assessment',
     'awarding',
+    'journal_submission',
     'completed'
   );
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
@@ -67,6 +68,18 @@ DO $$ BEGIN
   CREATE TYPE moderation_state AS ENUM ('none','pending','resolved');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 COMMENT ON TYPE moderation_state IS 'Moderation state of the activity';
+
+-- Stage types for the abstracted system
+DO $$ BEGIN
+  CREATE TYPE stage_type AS ENUM (
+    'simple_form',
+    'collaborative_assessment',
+    'awards_distribution',
+    'display',
+    'custom'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+COMMENT ON TYPE stage_type IS 'Type of stage determining its behavior';
 
 -- Peer review templates table
 CREATE TABLE IF NOT EXISTS pr_templates (
@@ -103,6 +116,25 @@ COMMENT ON COLUMN pr_template_ranks.template_id IS 'Foreign key to pr_templates'
 COMMENT ON COLUMN pr_template_ranks.rank_position IS 'Rank position (1st, 2nd, etc.)';
 COMMENT ON COLUMN pr_template_ranks.tokens IS 'Tokens awarded for this rank';
 
+-- Stage configuration tables for the abstracted system
+CREATE TABLE IF NOT EXISTS pr_stage_configs (
+  config_id SERIAL PRIMARY KEY,
+  template_id INTEGER REFERENCES pr_templates(template_id),
+  stage_name activity_state NOT NULL,
+  stage_type stage_type NOT NULL,
+  configuration JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(template_id, stage_name)
+);
+
+COMMENT ON TABLE pr_stage_configs IS 'Stage configurations for peer review activities';
+COMMENT ON COLUMN pr_stage_configs.config_id IS 'Primary key for the configuration';
+COMMENT ON COLUMN pr_stage_configs.template_id IS 'Associated template (NULL for global configs)';
+COMMENT ON COLUMN pr_stage_configs.stage_name IS 'Name of the stage';
+COMMENT ON COLUMN pr_stage_configs.stage_type IS 'Type of stage behavior';
+COMMENT ON COLUMN pr_stage_configs.configuration IS 'Full JSON configuration for the stage';
+
 -- Peer review activities table
 CREATE TABLE IF NOT EXISTS pr_activities (
   activity_id SERIAL PRIMARY KEY,
@@ -119,6 +151,7 @@ CREATE TABLE IF NOT EXISTS pr_activities (
   start_date TIMESTAMPTZ,
   completed_at TIMESTAMPTZ,
   super_admin_id INTEGER REFERENCES user_accounts(user_id) ON DELETE SET NULL,
+  stage_config_override JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT chk_escrow_nonnegative CHECK (escrow_balance >= 0),
@@ -140,6 +173,7 @@ COMMENT ON COLUMN pr_activities.posted_at IS 'When the activity was posted';
 COMMENT ON COLUMN pr_activities.start_date IS 'When the activity started';
 COMMENT ON COLUMN pr_activities.completed_at IS 'When the activity was completed';
 COMMENT ON COLUMN pr_activities.super_admin_id IS 'Super admin overseeing the activity';
+COMMENT ON COLUMN pr_activities.stage_config_override IS 'Activity-specific stage configuration overrides';
 COMMENT ON COLUMN pr_activities.created_at IS 'When the activity was created';
 COMMENT ON COLUMN pr_activities.updated_at IS 'When the activity was last updated';
 
@@ -158,19 +192,42 @@ COMMENT ON COLUMN pr_state_transitions.to_state IS 'Target state';
 CREATE TABLE IF NOT EXISTS pr_state_log (
   log_id SERIAL PRIMARY KEY,
   activity_id INTEGER NOT NULL REFERENCES pr_activities(activity_id) ON DELETE CASCADE,
-  old_state activity_state NOT NULL,
+  old_state activity_state,
   new_state activity_state NOT NULL,
-  changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  changed_by INTEGER REFERENCES user_accounts(user_id) ON DELETE SET NULL
+  changed_at TIMESTAMPTZ DEFAULT NOW(),
+  changed_by INTEGER REFERENCES user_accounts(user_id), -- NULL for system changes
+  reason TEXT,
+  metadata JSONB DEFAULT '{}'::jsonb
 );
 
 COMMENT ON TABLE pr_state_log IS 'History of peer-review activity state transitions';
 COMMENT ON COLUMN pr_state_log.log_id IS 'Primary key for the log entry';
 COMMENT ON COLUMN pr_state_log.activity_id IS 'Foreign key to pr_activities';
-COMMENT ON COLUMN pr_state_log.old_state IS 'Previous state';
+COMMENT ON COLUMN pr_state_log.old_state IS 'Previous state (NULL for initial state)';
 COMMENT ON COLUMN pr_state_log.new_state IS 'New state';
 COMMENT ON COLUMN pr_state_log.changed_at IS 'When the state changed';
-COMMENT ON COLUMN pr_state_log.changed_by IS 'User who triggered the state change';
+COMMENT ON COLUMN pr_state_log.changed_by IS 'User who triggered the state change (NULL for system changes)';
+COMMENT ON COLUMN pr_state_log.reason IS 'Reason for the state change';
+COMMENT ON COLUMN pr_state_log.metadata IS 'Additional metadata for the state change';
+
+-- Stage-specific data storage (runtime data) - Must be created after pr_activities
+CREATE TABLE IF NOT EXISTS pr_stage_data (
+  data_id SERIAL PRIMARY KEY,
+  activity_id INTEGER NOT NULL REFERENCES pr_activities(activity_id) ON DELETE CASCADE,
+  stage_name activity_state NOT NULL,
+  data_key TEXT NOT NULL,
+  data_value JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(activity_id, stage_name, data_key)
+);
+
+COMMENT ON TABLE pr_stage_data IS 'Runtime data storage for stages';
+COMMENT ON COLUMN pr_stage_data.data_id IS 'Primary key';
+COMMENT ON COLUMN pr_stage_data.activity_id IS 'Associated PR activity';
+COMMENT ON COLUMN pr_stage_data.stage_name IS 'Stage this data belongs to';
+COMMENT ON COLUMN pr_stage_data.data_key IS 'Key for the data';
+COMMENT ON COLUMN pr_stage_data.data_value IS 'Value stored as JSON';
 
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_pr_templates_name ON pr_templates (name);
@@ -186,6 +243,12 @@ CREATE INDEX IF NOT EXISTS idx_pr_activities_activity_uuid ON pr_activities (act
 CREATE INDEX IF NOT EXISTS idx_pr_state_log_activity_id ON pr_state_log (activity_id);
 CREATE INDEX IF NOT EXISTS idx_pr_state_log_changed_at ON pr_state_log (changed_at);
 
+-- New indexes for stage configuration system
+CREATE INDEX IF NOT EXISTS idx_pr_stage_configs_template_id ON pr_stage_configs (template_id);
+CREATE INDEX IF NOT EXISTS idx_pr_stage_configs_stage_name ON pr_stage_configs (stage_name);
+CREATE INDEX IF NOT EXISTS idx_pr_stage_data_activity_id ON pr_stage_data (activity_id);
+CREATE INDEX IF NOT EXISTS idx_pr_stage_data_stage_name ON pr_stage_data (stage_name);
+
 -- Basic triggers for updated_at fields
 CREATE TRIGGER update_pr_templates_updated_at
   BEFORE UPDATE ON pr_templates
@@ -194,6 +257,16 @@ CREATE TRIGGER update_pr_templates_updated_at
 
 CREATE TRIGGER update_pr_activities_updated_at
   BEFORE UPDATE ON pr_activities
+  FOR EACH ROW
+  EXECUTE FUNCTION set_updated_at();
+
+CREATE TRIGGER update_pr_stage_configs_updated_at
+  BEFORE UPDATE ON pr_stage_configs
+  FOR EACH ROW
+  EXECUTE FUNCTION set_updated_at();
+
+CREATE TRIGGER update_pr_stage_data_updated_at
+  BEFORE UPDATE ON pr_stage_data
   FOR EACH ROW
   EXECUTE FUNCTION set_updated_at();
 
@@ -230,10 +303,11 @@ INSERT INTO pr_state_transitions(from_state, to_state) VALUES
   ('review_round_1','author_response_1'),
   ('author_response_1','review_round_2'),
   ('review_round_2','author_response_2'),
-  ('author_response_1','evaluation'),
-  ('author_response_2','evaluation'),
-  ('evaluation','awarding'),
-  ('awarding','completed')
+          ('author_response_1','assessment'),
+        ('author_response_2','assessment'),
+        ('assessment','awarding'),
+  ('awarding','journal_submission'),
+  ('journal_submission','completed')
 ON CONFLICT DO NOTHING;
 
 -- =============================================
