@@ -59,7 +59,8 @@ DO $$ BEGIN
     'assessment',
     'awarding',
     'journal_submission',
-    'completed'
+    'publication_choice',
+    'published'
   );
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 COMMENT ON TYPE activity_state IS 'Current stage of the peer review activity';
