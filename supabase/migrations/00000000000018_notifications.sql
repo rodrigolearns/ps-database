@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS user_notifications (
     'reviewer_joined',
     'reviewer_removed',
     'awards_distributed',
-    'activity_completed'
+    'activity_published'
   )),
   title TEXT NOT NULL,
   message TEXT NOT NULL,

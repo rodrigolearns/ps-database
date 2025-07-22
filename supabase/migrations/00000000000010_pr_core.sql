@@ -58,8 +58,10 @@ DO $$ BEGIN
     'author_response_2',
     'assessment',
     'awarding',
-    'journal_submission',
-    'completed'
+    'journal_selection',
+    'published_on_ps',
+    'submitted_externally',
+    'made_private'
   );
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 COMMENT ON TYPE activity_state IS 'Current stage of the peer review activity';
@@ -306,8 +308,10 @@ INSERT INTO pr_state_transitions(from_state, to_state) VALUES
           ('author_response_1','assessment'),
         ('author_response_2','assessment'),
         ('assessment','awarding'),
-  ('awarding','journal_submission'),
-  ('journal_submission','completed')
+  ('awarding','journal_selection'),
+  ('journal_selection','published_on_ps'),
+  ('journal_selection','submitted_externally'),
+  ('journal_selection','made_private')
 ON CONFLICT DO NOTHING;
 
 -- =============================================
