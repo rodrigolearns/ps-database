@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS user_notifications (
     'reviewer_joined',
     'reviewer_removed',
     'awards_distributed',
-    'activity_completed'
+    'activity_published'
   )),
   title TEXT NOT NULL,
   message TEXT NOT NULL,
@@ -205,9 +205,9 @@ BEGIN
       WHEN 'awarding' THEN
         v_title := 'Award Distribution Phase';
         v_message := 'The review process is complete. Time to distribute awards to recognize excellent contributions.';
-      WHEN 'completed' THEN
-        v_title := 'Activity Completed';
-        v_message := 'The peer review activity has been successfully completed. Thank you for your participation!';
+              WHEN 'published' THEN
+            v_title := 'Paper Published';
+            v_message := 'The peer review activity has been successfully completed and the paper has been published! Thank you for your participation!';
       ELSE
         v_title := 'Activity Updated';
         v_message := 'The peer review activity status has been updated to: ' || NEW.current_state;

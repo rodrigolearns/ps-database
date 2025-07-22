@@ -79,7 +79,7 @@ BEGIN
     pa.created_at,
     pa.updated_at
   FROM pr_activities pa
-  WHERE pa.current_state != 'completed'
+  WHERE pa.current_state != 'published'
   ORDER BY pa.created_at;
 END;
 $$ LANGUAGE plpgsql;

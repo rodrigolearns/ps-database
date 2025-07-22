@@ -151,6 +151,9 @@ CREATE TABLE IF NOT EXISTS pr_activities (
   posted_at TIMESTAMPTZ DEFAULT NOW(),
   start_date TIMESTAMPTZ,
   completed_at TIMESTAMPTZ,
+  publication_choice TEXT, -- Choice made in publication_choice stage
+  published_to TEXT, -- Where the paper was published (e.g., 'paperstacks-library')
+  published_at TIMESTAMPTZ, -- When the paper was published
   super_admin_id INTEGER REFERENCES user_accounts(user_id) ON DELETE SET NULL,
   stage_config_override JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -307,8 +310,8 @@ INSERT INTO pr_state_transitions(from_state, to_state) VALUES
           ('author_response_1','assessment'),
         ('author_response_2','assessment'),
         ('assessment','awarding'),
-  ('awarding','journal_submission'),
-  ('journal_submission','completed')
+  ('awarding','publication_choice'),
+  ('publication_choice','published')
 ON CONFLICT DO NOTHING;
 
 -- =============================================
