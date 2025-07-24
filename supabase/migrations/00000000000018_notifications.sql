@@ -205,9 +205,18 @@ BEGIN
       WHEN 'awarding' THEN
         v_title := 'Award Distribution Phase';
         v_message := 'The review process is complete. Time to distribute awards to recognize excellent contributions.';
-      WHEN 'completed' THEN
-        v_title := 'Activity Completed';
-        v_message := 'The peer review activity has been successfully completed. Thank you for your participation!';
+      WHEN 'submission_choice' THEN
+        v_title := 'Submission Choice Phase';
+        v_message := 'Awards have been distributed. Time to choose how to proceed with this work.';
+      WHEN 'published_on_ps' THEN
+        v_title := 'Published on PaperStacks';
+        v_message := 'The peer review activity has been published on PaperStacks Library. Thank you for your participation!';
+      WHEN 'submitted_externally' THEN
+        v_title := 'Submitted to External Journal';
+        v_message := 'The work has been submitted to an external journal. Thank you for your participation!';
+      WHEN 'made_private' THEN
+        v_title := 'Made Private';
+        v_message := 'The activity has been made private. Thank you for your participation!';
       ELSE
         v_title := 'Activity Updated';
         v_message := 'The peer review activity status has been updated to: ' || NEW.current_state;

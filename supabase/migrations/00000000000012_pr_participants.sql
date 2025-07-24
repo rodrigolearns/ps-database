@@ -88,6 +88,16 @@ COMMENT ON COLUMN pr_timeline_events.metadata IS 'Additional event metadata';
 
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_pr_reviewer_teams_activity_id ON pr_reviewer_teams (activity_id);
+
+-- Enhanced indexes for pr_timeline_events for workflow system
+CREATE INDEX IF NOT EXISTS idx_pr_timeline_events_activity_id ON pr_timeline_events (activity_id);
+CREATE INDEX IF NOT EXISTS idx_pr_timeline_events_type_stage ON pr_timeline_events (event_type, stage);
+CREATE INDEX IF NOT EXISTS idx_pr_timeline_events_created_at ON pr_timeline_events (created_at DESC);
+
+-- Composite index for stage transition lookups
+CREATE INDEX IF NOT EXISTS idx_pr_timeline_events_activity_stage_created 
+ON pr_timeline_events (activity_id, stage, created_at DESC) 
+WHERE event_type = 'state_transition';
 CREATE INDEX IF NOT EXISTS idx_pr_reviewer_teams_user_id ON pr_reviewer_teams (user_id);
 CREATE INDEX IF NOT EXISTS idx_pr_reviewer_teams_status ON pr_reviewer_teams (status);
 CREATE INDEX IF NOT EXISTS idx_pr_reviewer_teams_commitment_deadline ON pr_reviewer_teams (commitment_deadline);

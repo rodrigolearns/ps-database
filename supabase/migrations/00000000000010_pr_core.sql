@@ -58,7 +58,7 @@ DO $$ BEGIN
     'author_response_2',
     'assessment',
     'awarding',
-    'journal_selection',
+    'submission_choice',
     'published_on_ps',
     'submitted_externally',
     'made_private'
@@ -190,6 +190,48 @@ COMMENT ON TABLE pr_state_transitions IS 'Valid state transitions for peer revie
 COMMENT ON COLUMN pr_state_transitions.from_state IS 'Starting state';
 COMMENT ON COLUMN pr_state_transitions.to_state IS 'Target state';
 
+-- Insert valid state transitions FIRST (before creating foreign key constraint)
+INSERT INTO pr_state_transitions (from_state, to_state) VALUES
+  ('submitted', 'review_round_1'),
+  ('review_round_1', 'author_response_1'),
+  ('author_response_1', 'review_round_2'), 
+  ('review_round_2', 'assessment'),
+  ('assessment', 'awarding'),
+  ('awarding', 'submission_choice'),
+  ('submission_choice', 'published_on_ps'),
+  ('submission_choice', 'submitted_externally'),
+  ('submission_choice', 'made_private')
+ON CONFLICT DO NOTHING;
+
+-- Stage transition rules table - Database-driven workflow progression rules with timing control
+CREATE TABLE IF NOT EXISTS stage_transition_rules (
+  rule_id SERIAL PRIMARY KEY,
+  from_stage activity_state NOT NULL,
+  to_stage activity_state NOT NULL,
+  condition_type TEXT NOT NULL, -- 'min_reviewers_active', 'all_reviews_submitted', 'author_response_submitted'
+  condition_params JSONB DEFAULT '{}',
+  template_id INTEGER REFERENCES pr_templates(template_id), -- NULL means applies to all templates
+  timing_mode TEXT DEFAULT 'before_action' CHECK (timing_mode IN ('before_action', 'after_action', 'custom')),
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  CONSTRAINT fk_from_to_valid FOREIGN KEY (from_stage, to_stage) REFERENCES pr_state_transitions(from_state, to_state)
+);
+
+COMMENT ON TABLE stage_transition_rules IS 'Database-driven rules for automatic stage transitions in peer review workflow';
+COMMENT ON COLUMN stage_transition_rules.rule_id IS 'Primary key for the rule';
+COMMENT ON COLUMN stage_transition_rules.from_stage IS 'Stage to transition from';
+COMMENT ON COLUMN stage_transition_rules.to_stage IS 'Stage to transition to';
+COMMENT ON COLUMN stage_transition_rules.condition_type IS 'Type of condition to check (min_reviewers_active, all_reviews_submitted, etc.)';
+COMMENT ON COLUMN stage_transition_rules.condition_params IS 'Parameters for the condition (e.g., {"minCount": 3, "round": 1})';
+COMMENT ON COLUMN stage_transition_rules.template_id IS 'Template this rule applies to (NULL for all templates)';
+COMMENT ON COLUMN stage_transition_rules.timing_mode IS 'When stage transition appears in timeline: before_action (stage first, then user action), after_action (user action first, then stage), custom (special handling)';
+COMMENT ON COLUMN stage_transition_rules.is_active IS 'Whether this rule is currently active';
+
+-- Index for efficient rule lookups
+CREATE INDEX IF NOT EXISTS idx_stage_transition_rules_lookup 
+ON stage_transition_rules(from_stage, is_active, template_id);
+
 -- State change audit log - KEEP for audit trail
 CREATE TABLE IF NOT EXISTS pr_state_log (
   log_id SERIAL PRIMARY KEY,
@@ -308,10 +350,10 @@ INSERT INTO pr_state_transitions(from_state, to_state) VALUES
           ('author_response_1','assessment'),
         ('author_response_2','assessment'),
         ('assessment','awarding'),
-  ('awarding','journal_selection'),
-  ('journal_selection','published_on_ps'),
-  ('journal_selection','submitted_externally'),
-  ('journal_selection','made_private')
+  ('awarding','submission_choice'),
+  ('submission_choice','published_on_ps'),
+  ('submission_choice','submitted_externally'),
+  ('submission_choice','made_private')
 ON CONFLICT DO NOTHING;
 
 -- =============================================
@@ -412,4 +454,34 @@ CREATE POLICY "Paper creators can manage paper authors"
             WHERE p.paper_id = paper_authors.paper_id
             AND ua.auth_id = auth.uid()
         )
-    ); 
+    );
+
+-- =============================================
+-- SEED DATA: Initial Stage Transition Rules
+-- =============================================
+
+-- Insert basic stage transition rules with explicit timing control (will be ignored if already exist)
+INSERT INTO stage_transition_rules (from_stage, to_stage, condition_type, condition_params, template_id, timing_mode) 
+VALUES 
+  -- Submitted -> Review Round 1: Exception case - appears immediately when first reviewer submits evaluation
+  ('submitted', 'review_round_1', 'min_reviewers_locked_in', '{"minCount": 1}', NULL, 'before_action'),
+  
+  -- Review Round 1 -> Author Response 1: Exception case - appears AFTER the last review submission for proper timeline order
+  ('review_round_1', 'author_response_1', 'all_reviews_submitted', '{"round": 1}', NULL, 'after_action'),
+  
+  -- Author Response 1 -> Review Round 2: Updated timing - appears AFTER author response submission for proper timeline order
+  ('author_response_1', 'review_round_2', 'author_response_submitted', '{"round": 1}', NULL, 'after_action'),
+  
+  -- Review Round 2 -> Assessment: Standard timing - appears before final review submission  
+  ('review_round_2', 'assessment', 'all_reviews_submitted', '{"round": 2}', NULL, 'before_action'),
+  
+  -- Assessment -> Awarding: Standard timing - appears before assessment finalization
+  ('assessment', 'awarding', 'assessment_finalized', '{}', NULL, 'before_action'),
+  
+  -- Awarding -> Submission Choice: Standard timing - appears before award distribution
+  ('awarding', 'submission_choice', 'awards_distributed', '{}', NULL, 'before_action')
+ON CONFLICT DO NOTHING;
+
+COMMENT ON TABLE stage_transition_rules IS 'Database-driven rules for automatic stage transitions in peer review workflow';
+
+ 
