@@ -457,7 +457,7 @@ CREATE POLICY "Paper creators can manage paper authors"
     );
 
 -- =============================================
--- SEED DATA: Initial Stage Transition Rules
+-- SEED DATA: Initial Stage Transition Rules  
 -- =============================================
 
 -- Insert basic stage transition rules with explicit timing control (will be ignored if already exist)
@@ -469,9 +469,6 @@ VALUES
   -- Review Round 1 -> Author Response 1: Exception case - appears AFTER the last review submission for proper timeline order
   ('review_round_1', 'author_response_1', 'all_reviews_submitted', '{"round": 1}', NULL, 'after_action'),
   
-  -- Author Response 1 -> Review Round 2: Updated timing - appears AFTER author response submission for proper timeline order
-  ('author_response_1', 'review_round_2', 'author_response_submitted', '{"round": 1}', NULL, 'after_action'),
-  
   -- Review Round 2 -> Assessment: Standard timing - appears before final review submission  
   ('review_round_2', 'assessment', 'all_reviews_submitted', '{"round": 2}', NULL, 'before_action'),
   
@@ -482,6 +479,21 @@ VALUES
   ('awarding', 'submission_choice', 'awards_distributed', '{}', NULL, 'before_action')
 ON CONFLICT DO NOTHING;
 
-COMMENT ON TABLE stage_transition_rules IS 'Database-driven rules for automatic stage transitions in peer review workflow';
+-- TEMPLATE-SPECIFIC TRANSITION RULES
+-- Add template-specific rules for author_response_1 transitions based on review_rounds
+INSERT INTO stage_transition_rules (from_stage, to_stage, condition_type, condition_params, template_id, timing_mode)
+SELECT 
+  'author_response_1',
+  CASE 
+    WHEN pt.review_rounds = 1 THEN 'assessment'::activity_state
+    WHEN pt.review_rounds >= 2 THEN 'review_round_2'::activity_state
+  END,
+  'author_response_submitted',
+  '{"round": 1}',
+  pt.template_id,
+  'after_action'
+FROM pr_templates pt
+WHERE pt.name IN ('1-round,3-reviewers,10-tokens', '2-round,4-reviewers,15-tokens')
+ON CONFLICT DO NOTHING;
 
- 
+COMMENT ON TABLE stage_transition_rules IS 'Database-driven rules for automatic stage transitions in peer review workflow';
