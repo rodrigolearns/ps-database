@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS pr_finalization_status (
   status_id        SERIAL PRIMARY KEY,
   activity_id      INTEGER NOT NULL
     REFERENCES pr_activities(activity_id) ON DELETE CASCADE,
-  reviewer_id      INTEGER NOT NULL
+  reviewer_id      INTEGER NULL
     REFERENCES user_accounts(user_id) ON DELETE CASCADE,
   is_finalized     BOOLEAN NOT NULL DEFAULT FALSE,
   finalized_at     TIMESTAMPTZ NULL,
@@ -451,24 +451,31 @@ CREATE POLICY "assessment_reviewer_access" ON pr_assessments
         SELECT user_id FROM user_accounts 
         WHERE auth_id = auth.uid()
       )
-      AND prt.status = 'joined'
+      AND prt.status IN ('joined', 'locked_in')
     )
   );
 
--- Policy for pr_finalization_status: Only reviewers can access finalization status
-CREATE POLICY "finalization_reviewer_access" ON pr_finalization_status
+-- Policy for pr_finalization_status: Reviewers can only access their own finalization status + global records
+CREATE POLICY "finalization_own_access" ON pr_finalization_status
   FOR ALL
   TO authenticated
   USING (
-    EXISTS (
+    -- Can access own finalization status
+    (reviewer_id = (
+      SELECT user_id FROM user_accounts 
+      WHERE auth_id = auth.uid()
+    ))
+    OR
+    -- Can access global finalization records (reviewer_id IS NULL) if user is a reviewer in the activity
+    (reviewer_id IS NULL AND EXISTS (
       SELECT 1 FROM pr_reviewer_teams prt
       WHERE prt.activity_id = pr_finalization_status.activity_id
       AND prt.user_id = (
         SELECT user_id FROM user_accounts 
         WHERE auth_id = auth.uid()
       )
-      AND prt.status = 'joined'
-    )
+      AND prt.status IN ('joined', 'locked_in')
+    ))
   );
 
 -- 7. Cleanup job for expired locks (run periodically)
