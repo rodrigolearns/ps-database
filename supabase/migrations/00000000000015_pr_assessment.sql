@@ -188,12 +188,12 @@ DECLARE
   v_total_reviewers INTEGER;
   v_finalized_reviewers INTEGER;
 BEGIN
-  -- Count total reviewers for this activity
+  -- Count total reviewers for this activity (include both joined and locked_in)
   SELECT COUNT(*)
   INTO v_total_reviewers
   FROM pr_reviewer_teams
   WHERE activity_id = p_activity_id
-  AND status = 'joined';
+  AND status IN ('joined', 'locked_in');
   
   -- Count reviewers who have finalized
   SELECT COUNT(*)
@@ -255,80 +255,18 @@ BEGIN
   -- Check if all reviewers have finalized
   SELECT check_all_assessments_finalized(p_activity_id) INTO v_all_finalized;
   
-  IF v_all_finalized THEN
-    -- Mark the main assessment as finalized
-    UPDATE pr_assessments
-    SET is_finalized = true,
-        updated_at = NOW()
-    WHERE activity_id = p_activity_id;
-    
-    -- Transition to awarding state
-    UPDATE pr_activities
-    SET current_state = 'awarding',
-        updated_at = NOW()
-    WHERE activity_id = p_activity_id;
-    
-    -- Log the state change
-    INSERT INTO pr_state_log (activity_id, old_state, new_state, changed_by, reason)
-    VALUES (p_activity_id, 'assessment', 'awarding', p_reviewer_id, 'All reviewers finalized assessment');
-    
-    -- Create timeline event for assessment completion with all reviewer names
-    INSERT INTO pr_timeline_events (
-      activity_id,
-      event_type,
-      stage,
-      user_id,
-      user_name,
-      title,
-      description,
-      metadata,
-      created_at
-    ) 
-    SELECT 
-      p_activity_id,
-      'collaborative_assessment',
-      'assessment',
-      p_reviewer_id,
-      reviewers.all_reviewer_names,
-      'Collaborative Assessment',
-      'All reviewers have finalized the collaborative assessment',
-      jsonb_build_object(
-        'assessment_id', pa.assessment_id,
-        'finalized_by_count', (
-          SELECT COUNT(*) FROM pr_finalization_status 
-          WHERE activity_id = p_activity_id AND is_finalized = true
-        ),
-        'all_reviewers', reviewers.reviewer_array
-      ),
-      NOW()
-    FROM pr_assessments pa
-    CROSS JOIN (
-      SELECT string_agg(COALESCE(ua.full_name, ua.username, 'Unknown User'), ', ' ORDER BY ua.username) as all_reviewer_names,
-             array_agg(COALESCE(ua.full_name, ua.username, 'Unknown User') ORDER BY ua.username) as reviewer_array
-      FROM pr_reviewer_teams prt
-      JOIN user_accounts ua ON prt.user_id = ua.user_id
-      WHERE prt.activity_id = p_activity_id AND prt.status = 'joined'
-    ) reviewers
-    WHERE pa.activity_id = p_activity_id;
-    
-    RETURN jsonb_build_object(
-      'success', true,
-      'message', 'Assessment finalized and transitioned to awarding',
-      'activity_id', p_activity_id,
-      'reviewer_id', p_reviewer_id,
-      'state_changed', true,
-      'new_state', 'awarding'
-    );
-  ELSE
-    RETURN jsonb_build_object(
-      'success', true,
-      'message', 'Reviewer finalization recorded, waiting for others',
-      'activity_id', p_activity_id,
-      'reviewer_id', p_reviewer_id,
-      'state_changed', false,
-      'current_state', v_current_state
-    );
-  END IF;
+  -- Just return status - let the service layer handle state transitions and timeline events
+  RETURN jsonb_build_object(
+    'success', true,
+    'message', CASE 
+      WHEN v_all_finalized THEN 'All reviewers have finalized the assessment'
+      ELSE 'Reviewer finalization recorded, waiting for others'
+    END,
+    'activity_id', p_activity_id,
+    'reviewer_id', p_reviewer_id,
+    'all_finalized', v_all_finalized,
+    'current_state', v_current_state
+  );
   
 EXCEPTION WHEN OTHERS THEN
   RETURN jsonb_build_object(
@@ -501,10 +439,160 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 COMMENT ON FUNCTION scheduled_cleanup_assessment_locks() IS 'Cleanup job for expired assessment edit locks'; 
 
+-- 8. Conditional finalization update functions for RLS-based reset system
+
+-- Function to handle conditional finalization updates
+-- Allows: Own record (any change), Others' records (only finalized → edit reset)
+CREATE OR REPLACE FUNCTION update_reviewer_finalization_conditional(
+  p_activity_id INTEGER,
+  p_reviewer_id INTEGER,
+  p_is_finalized BOOLEAN,
+  p_requesting_user_id INTEGER
+) RETURNS JSONB AS $$
+DECLARE
+  v_current_status BOOLEAN;
+  v_is_reviewer BOOLEAN;
+  v_result JSONB;
+BEGIN
+  -- Verify requesting user is a reviewer in this activity
+  SELECT EXISTS (
+    SELECT 1 FROM pr_reviewer_teams 
+    WHERE activity_id = p_activity_id 
+    AND user_id = p_requesting_user_id
+    AND status IN ('joined', 'locked_in')
+  ) INTO v_is_reviewer;
+  
+  IF NOT v_is_reviewer THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'error', 'Not authorized - user is not a reviewer in this activity'
+    );
+  END IF;
+  
+  -- Get current finalization status
+  SELECT is_finalized INTO v_current_status
+  FROM pr_finalization_status
+  WHERE activity_id = p_activity_id AND reviewer_id = p_reviewer_id;
+  
+  -- Apply conditional update rules
+  IF p_reviewer_id = p_requesting_user_id THEN
+    -- Own record: Full control (can finalize or unfinalize)
+    INSERT INTO pr_finalization_status (
+      activity_id, reviewer_id, is_finalized, finalized_at, updated_at
+    )
+    VALUES (
+      p_activity_id, p_reviewer_id, p_is_finalized,
+      CASE WHEN p_is_finalized THEN NOW() ELSE NULL END,
+      NOW()
+    )
+    ON CONFLICT (activity_id, reviewer_id)
+    DO UPDATE SET
+      is_finalized = p_is_finalized,
+      finalized_at = CASE WHEN p_is_finalized THEN NOW() ELSE NULL END,
+      updated_at = NOW();
+      
+    RETURN jsonb_build_object(
+      'success', true,
+      'action', 'own_record_updated',
+      'old_status', v_current_status,
+      'new_status', p_is_finalized
+    );
+    
+  ELSIF v_current_status = true AND p_is_finalized = false THEN
+    -- Others' record: Only allow reset (finalized → edit)
+    UPDATE pr_finalization_status
+    SET 
+      is_finalized = false,
+      finalized_at = NULL,
+      updated_at = NOW()
+    WHERE activity_id = p_activity_id AND reviewer_id = p_reviewer_id;
+    
+    RETURN jsonb_build_object(
+      'success', true,
+      'action', 'other_record_reset',
+      'old_status', true,
+      'new_status', false,
+      'reset_by', p_requesting_user_id
+    );
+    
+  ELSE
+    -- Forbidden: Cannot finalize others or change already-edit records
+    RETURN jsonb_build_object(
+      'success', false,
+      'error', 'Cannot finalize others or modify already-edit records',
+      'current_status', v_current_status,
+      'requested_status', p_is_finalized
+    );
+  END IF;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+COMMENT ON FUNCTION update_reviewer_finalization_conditional IS 'Handles conditional finalization updates with business rule enforcement';
+
+-- Function to reset ALL finalization statuses when content changes
+CREATE OR REPLACE FUNCTION reset_all_finalization_statuses(
+  p_activity_id INTEGER,
+  p_requesting_user_id INTEGER,
+  p_reason TEXT DEFAULT 'content_modified'
+) RETURNS JSONB AS $$
+DECLARE
+  v_is_reviewer BOOLEAN;
+  v_reset_count INTEGER := 0;
+  v_reviewer_record RECORD;
+  v_function_result JSONB;
+BEGIN
+  -- Verify requesting user is a reviewer
+  SELECT EXISTS (
+    SELECT 1 FROM pr_reviewer_teams 
+    WHERE activity_id = p_activity_id 
+    AND user_id = p_requesting_user_id
+    AND status IN ('joined', 'locked_in')
+  ) INTO v_is_reviewer;
+  
+  IF NOT v_is_reviewer THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'error', 'Not authorized to reset finalization statuses'
+    );
+  END IF;
+  
+  -- Reset all finalization statuses using the conditional function
+  FOR v_reviewer_record IN 
+    SELECT user_id FROM pr_reviewer_teams 
+    WHERE activity_id = p_activity_id 
+    AND status IN ('joined', 'locked_in')
+  LOOP
+    -- Use conditional function to reset each reviewer's status
+    SELECT update_reviewer_finalization_conditional(
+      p_activity_id,
+      v_reviewer_record.user_id,
+      false, -- Reset to false
+      p_requesting_user_id
+    ) INTO v_function_result;
+    
+    -- Count successful resets
+    IF (v_function_result->>'success')::boolean THEN
+      v_reset_count := v_reset_count + 1;
+    END IF;
+  END LOOP;
+  
+  RETURN jsonb_build_object(
+    'success', true,
+    'reset_count', v_reset_count,
+    'reason', p_reason,
+    'reset_by', p_requesting_user_id
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+COMMENT ON FUNCTION reset_all_finalization_statuses IS 'Resets all reviewer finalization statuses for an activity';
+
 -- Grant permissions for assessment functions
 GRANT EXECUTE ON FUNCTION acquire_assessment_edit_lock(INTEGER, INTEGER, INTEGER) TO authenticated;
 GRANT EXECUTE ON FUNCTION release_assessment_edit_lock(INTEGER, INTEGER) TO authenticated;
 GRANT EXECUTE ON FUNCTION check_all_assessments_finalized(INTEGER) TO authenticated;
 GRANT EXECUTE ON FUNCTION finalize_assessment_and_check_transition(INTEGER, INTEGER) TO authenticated;
 GRANT EXECUTE ON FUNCTION simple_update_activity_state(INTEGER, activity_state, TEXT) TO authenticated;
-GRANT EXECUTE ON FUNCTION scheduled_cleanup_assessment_locks() TO authenticated; 
+GRANT EXECUTE ON FUNCTION scheduled_cleanup_assessment_locks() TO authenticated;
+GRANT EXECUTE ON FUNCTION update_reviewer_finalization_conditional(INTEGER, INTEGER, BOOLEAN, INTEGER) TO authenticated;
+GRANT EXECUTE ON FUNCTION reset_all_finalization_statuses(INTEGER, INTEGER, TEXT) TO authenticated; 
