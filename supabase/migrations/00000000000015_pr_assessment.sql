@@ -455,19 +455,13 @@ CREATE POLICY "assessment_reviewer_access" ON pr_assessments
     )
   );
 
--- Policy for pr_finalization_status: Reviewers can only access their own finalization status + global records
-CREATE POLICY "finalization_own_access" ON pr_finalization_status
+-- Policy for pr_finalization_status: Reviewers can access all finalization statuses for their activities
+CREATE POLICY "finalization_reviewer_visibility" ON pr_finalization_status
   FOR ALL
   TO authenticated
   USING (
-    -- Can access own finalization status
-    (reviewer_id = (
-      SELECT user_id FROM user_accounts 
-      WHERE auth_id = auth.uid()
-    ))
-    OR
-    -- Can access global finalization records (reviewer_id IS NULL) if user is a reviewer in the activity
-    (reviewer_id IS NULL AND EXISTS (
+    -- Reviewers can see all finalization statuses for activities they're part of
+    EXISTS (
       SELECT 1 FROM pr_reviewer_teams prt
       WHERE prt.activity_id = pr_finalization_status.activity_id
       AND prt.user_id = (
@@ -475,7 +469,17 @@ CREATE POLICY "finalization_own_access" ON pr_finalization_status
         WHERE auth_id = auth.uid()
       )
       AND prt.status IN ('joined', 'locked_in')
-    ))
+    )
+  )
+  WITH CHECK (
+    -- Can only modify their own finalization status
+    reviewer_id = (
+      SELECT user_id FROM user_accounts 
+      WHERE auth_id = auth.uid()
+    )
+    OR
+    -- Allow system/admin operations for global records
+    reviewer_id IS NULL
   );
 
 -- 7. Cleanup job for expired locks (run periodically)
