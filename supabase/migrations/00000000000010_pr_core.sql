@@ -475,8 +475,8 @@ VALUES
   -- Assessment -> Awarding: Standard timing - appears before assessment finalization
   ('assessment', 'awarding', 'assessment_finalized', '{}', NULL, 'before_action'),
   
-  -- Awarding -> Submission Choice: Standard timing - appears before award distribution
-  ('awarding', 'submission_choice', 'awards_distributed', '{}', NULL, 'before_action')
+  -- Awarding -> Submission Choice: Standard timing - appears after award distribution
+  ('awarding', 'submission_choice', 'awards_distributed', '{}', NULL, 'after_action')
 ON CONFLICT DO NOTHING;
 
 -- TEMPLATE-SPECIFIC TRANSITION RULES
