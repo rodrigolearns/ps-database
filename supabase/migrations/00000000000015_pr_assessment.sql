@@ -377,11 +377,13 @@ CREATE TRIGGER update_pr_finalization_status_updated_at
 ALTER TABLE pr_assessments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pr_finalization_status ENABLE ROW LEVEL SECURITY;
 
--- Policy for pr_assessments: Only reviewers can access collaborative assessments
-CREATE POLICY "assessment_reviewer_access" ON pr_assessments
+-- Policy for pr_assessments: Both reviewers and paper contributors can access collaborative assessments
+DROP POLICY IF EXISTS "assessment_reviewer_access" ON pr_assessments;
+CREATE POLICY "assessment_participant_access" ON pr_assessments
   FOR ALL
   TO authenticated
   USING (
+    -- Allow reviewers who are part of the reviewer team
     EXISTS (
       SELECT 1 FROM pr_reviewer_teams prt
       WHERE prt.activity_id = pr_assessments.activity_id
@@ -390,6 +392,18 @@ CREATE POLICY "assessment_reviewer_access" ON pr_assessments
         WHERE auth_id = auth.uid()
       )
       AND prt.status IN ('joined', 'locked_in')
+    )
+    OR
+    -- Allow paper contributors (authors) of the associated paper
+    EXISTS (
+      SELECT 1 FROM pr_activities pra
+      JOIN papers p ON p.paper_id = pra.paper_id
+      JOIN paper_contributors pc ON pc.paper_id = p.paper_id
+      WHERE pra.activity_id = pr_assessments.activity_id
+      AND pc.user_id = (
+        SELECT user_id FROM user_accounts 
+        WHERE auth_id = auth.uid()
+      )
     )
   );
 
