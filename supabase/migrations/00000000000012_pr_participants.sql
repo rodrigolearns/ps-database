@@ -110,7 +110,6 @@ CREATE INDEX IF NOT EXISTS idx_pr_participants_role ON pr_participants(role);
 CREATE INDEX IF NOT EXISTS idx_pr_participants_status ON pr_participants(status);
 
 -- Indexes for pr_timeline_events
-CREATE INDEX IF NOT EXISTS idx_pr_timeline_activity ON pr_timeline_events(activity_id);
 CREATE INDEX IF NOT EXISTS idx_pr_timeline_created ON pr_timeline_events(created_at);
 CREATE INDEX IF NOT EXISTS idx_pr_timeline_type ON pr_timeline_events(event_type);
 CREATE INDEX IF NOT EXISTS idx_pr_timeline_user ON pr_timeline_events(user_id);
@@ -144,38 +143,35 @@ CREATE POLICY "Anyone can view participants"
   ON pr_participants FOR SELECT
   USING (true);
 
-CREATE POLICY "Service operations can manage participants"
-  ON pr_participants FOR ALL
+CREATE POLICY "Service operations can insert participants"
+  ON pr_participants FOR INSERT
+  WITH CHECK (true);
+
+CREATE POLICY "Service operations can update participants"
+  ON pr_participants FOR UPDATE
   USING (true)
   WITH CHECK (true);
 
-CREATE POLICY "Users can view their own participation"
-  ON pr_participants FOR SELECT TO authenticated
-  USING (
-    user_id = (
-      SELECT user_id FROM user_accounts 
-      WHERE auth_id = auth.uid()
-    )
-    OR
-    -- Activity creators can see all participants
-    EXISTS (
-      SELECT 1 FROM pr_activities pa
-      WHERE pa.activity_id = pr_participants.activity_id
-      AND pa.creator_id = (
-        SELECT user_id FROM user_accounts 
-        WHERE auth_id = auth.uid()
-      )
-    )
-  );
+CREATE POLICY "Service operations can delete participants"
+  ON pr_participants FOR DELETE
+  USING (true);
 
 CREATE POLICY "Anyone can view timeline events"
   ON pr_timeline_events FOR SELECT
   USING (true);
 
-CREATE POLICY "Service operations can manage timeline events"
-  ON pr_timeline_events FOR ALL
+CREATE POLICY "Service operations can insert timeline events"
+  ON pr_timeline_events FOR INSERT
+  WITH CHECK (true);
+
+CREATE POLICY "Service operations can update timeline events"
+  ON pr_timeline_events FOR UPDATE
   USING (true)
   WITH CHECK (true);
+
+CREATE POLICY "Service operations can delete timeline events"
+  ON pr_timeline_events FOR DELETE
+  USING (true);
 
 -- Grant permissions
 GRANT SELECT ON pr_participants TO authenticated;

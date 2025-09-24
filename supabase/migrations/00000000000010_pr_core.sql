@@ -372,7 +372,7 @@ CREATE POLICY "Authenticated users can create papers"
     WITH CHECK (
         EXISTS (
             SELECT 1 FROM user_accounts ua
-            WHERE ua.auth_id = auth.uid()
+            WHERE ua.auth_id = (SELECT auth.uid())
             AND ua.user_id = papers.uploaded_by
         )
     );
@@ -382,7 +382,7 @@ CREATE POLICY "Paper creators can update their papers"
     USING (
         EXISTS (
             SELECT 1 FROM user_accounts ua
-            WHERE ua.auth_id = auth.uid() 
+            WHERE ua.auth_id = (SELECT auth.uid()) 
             AND ua.user_id = papers.uploaded_by
         )
     );
@@ -399,7 +399,7 @@ CREATE POLICY "Authenticated users can create PR activities"
     WITH CHECK (
         EXISTS (
             SELECT 1 FROM user_accounts ua
-            WHERE ua.auth_id = auth.uid()
+            WHERE ua.auth_id = (SELECT auth.uid())
             AND ua.user_id = pr_activities.creator_id
         )
     );
@@ -409,7 +409,7 @@ CREATE POLICY "Activity creators can update their PR activities"
     USING (
         EXISTS (
             SELECT 1 FROM user_accounts ua
-            WHERE ua.auth_id = auth.uid()
+            WHERE ua.auth_id = (SELECT auth.uid())
             AND ua.user_id = pr_activities.creator_id
         )
     );
@@ -421,19 +421,39 @@ CREATE POLICY "Anyone can view authors"
     ON authors FOR SELECT
     USING (true);
 
-CREATE POLICY "Users can create and update their own author profiles"
-    ON authors FOR ALL TO authenticated
+CREATE POLICY "Users can manage their own author profiles"
+    ON authors FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM user_accounts ua
+            WHERE ua.auth_id = (SELECT auth.uid())
+            AND ua.user_id = authors.user_id
+        )
+    );
+
+CREATE POLICY "Users can update their own author profiles"
+    ON authors FOR UPDATE TO authenticated
     USING (
         EXISTS (
             SELECT 1 FROM user_accounts ua
-            WHERE ua.auth_id = auth.uid()
+            WHERE ua.auth_id = (SELECT auth.uid())
             AND ua.user_id = authors.user_id
         )
     )
     WITH CHECK (
         EXISTS (
             SELECT 1 FROM user_accounts ua
-            WHERE ua.auth_id = auth.uid()
+            WHERE ua.auth_id = (SELECT auth.uid())
+            AND ua.user_id = authors.user_id
+        )
+    );
+
+CREATE POLICY "Users can delete their own author profiles"
+    ON authors FOR DELETE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM user_accounts ua
+            WHERE ua.auth_id = (SELECT auth.uid())
             AND ua.user_id = authors.user_id
         )
     );
@@ -445,14 +465,44 @@ CREATE POLICY "Anyone can view paper authors"
     ON paper_authors FOR SELECT
     USING (true);
 
-CREATE POLICY "Paper creators can manage paper authors"
-    ON paper_authors FOR ALL TO authenticated
+CREATE POLICY "Paper creators can add paper authors"
+    ON paper_authors FOR INSERT TO authenticated
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM papers p
+            JOIN user_accounts ua ON p.uploaded_by = ua.user_id
+            WHERE p.paper_id = paper_authors.paper_id
+            AND ua.auth_id = (SELECT auth.uid())
+        )
+    );
+
+CREATE POLICY "Paper creators can update paper authors"
+    ON paper_authors FOR UPDATE TO authenticated
     USING (
         EXISTS (
             SELECT 1 FROM papers p
             JOIN user_accounts ua ON p.uploaded_by = ua.user_id
             WHERE p.paper_id = paper_authors.paper_id
-            AND ua.auth_id = auth.uid()
+            AND ua.auth_id = (SELECT auth.uid())
+        )
+    )
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM papers p
+            JOIN user_accounts ua ON p.uploaded_by = ua.user_id
+            WHERE p.paper_id = paper_authors.paper_id
+            AND ua.auth_id = (SELECT auth.uid())
+        )
+    );
+
+CREATE POLICY "Paper creators can remove paper authors"
+    ON paper_authors FOR DELETE TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM papers p
+            JOIN user_accounts ua ON p.uploaded_by = ua.user_id
+            WHERE p.paper_id = paper_authors.paper_id
+            AND ua.auth_id = (SELECT auth.uid())
         )
     );
 

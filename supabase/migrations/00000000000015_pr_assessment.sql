@@ -389,7 +389,7 @@ CREATE POLICY "assessment_participant_access" ON pr_assessments
       WHERE prt.activity_id = pr_assessments.activity_id
       AND prt.user_id = (
         SELECT user_id FROM user_accounts 
-        WHERE auth_id = auth.uid()
+        WHERE auth_id = (SELECT auth.uid())
       )
       AND prt.status IN ('joined', 'locked_in')
     )
@@ -402,7 +402,7 @@ CREATE POLICY "assessment_participant_access" ON pr_assessments
       WHERE pra.activity_id = pr_assessments.activity_id
       AND pc.user_id = (
         SELECT user_id FROM user_accounts 
-        WHERE auth_id = auth.uid()
+        WHERE auth_id = (SELECT auth.uid())
       )
     )
   );
@@ -418,7 +418,7 @@ CREATE POLICY "finalization_reviewer_visibility" ON pr_finalization_status
       WHERE prt.activity_id = pr_finalization_status.activity_id
       AND prt.user_id = (
         SELECT user_id FROM user_accounts 
-        WHERE auth_id = auth.uid()
+        WHERE auth_id = (SELECT auth.uid())
       )
       AND prt.status IN ('joined', 'locked_in')
     )
@@ -427,7 +427,7 @@ CREATE POLICY "finalization_reviewer_visibility" ON pr_finalization_status
     -- Can only modify their own finalization status
     reviewer_id = (
       SELECT user_id FROM user_accounts 
-      WHERE auth_id = auth.uid()
+      WHERE auth_id = (SELECT auth.uid())
     )
     OR
     -- Allow system/admin operations for global records

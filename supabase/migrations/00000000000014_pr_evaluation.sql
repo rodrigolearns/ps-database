@@ -88,7 +88,7 @@ CREATE POLICY "review_submissions_access" ON pr_review_submissions
     -- Reviewer can access their own reviews
     reviewer_id = (
       SELECT user_id FROM user_accounts 
-      WHERE auth_id = auth.uid()
+      WHERE auth_id = (SELECT auth.uid())
     )
     OR
     -- Corresponding author can access reviews for their activity
@@ -97,7 +97,7 @@ CREATE POLICY "review_submissions_access" ON pr_review_submissions
       WHERE pa.activity_id = pr_review_submissions.activity_id
       AND pa.creator_id = (
         SELECT user_id FROM user_accounts 
-        WHERE auth_id = auth.uid()
+        WHERE auth_id = (SELECT auth.uid())
       )
     )
     OR
@@ -109,7 +109,7 @@ CREATE POLICY "review_submissions_access" ON pr_review_submissions
       AND pa.current_state = 'assessment'
       AND prt.user_id = (
         SELECT user_id FROM user_accounts 
-        WHERE auth_id = auth.uid()
+        WHERE auth_id = (SELECT auth.uid())
       )
       AND prt.status = 'joined'
     )
@@ -125,7 +125,7 @@ CREATE POLICY "author_responses_access" ON pr_author_responses
     -- Corresponding author can access their own responses
     user_id = (
       SELECT user_id FROM user_accounts 
-      WHERE auth_id = auth.uid()
+      WHERE auth_id = (SELECT auth.uid())
     )
     OR
     -- Reviewers in the same activity can access author responses
@@ -134,7 +134,7 @@ CREATE POLICY "author_responses_access" ON pr_author_responses
       WHERE prt.activity_id = pr_author_responses.activity_id
       AND prt.user_id = (
         SELECT user_id FROM user_accounts 
-        WHERE auth_id = auth.uid()
+        WHERE auth_id = (SELECT auth.uid())
       )
       AND prt.status = 'joined'
     )

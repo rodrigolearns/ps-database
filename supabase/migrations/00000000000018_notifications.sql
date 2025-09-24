@@ -194,7 +194,7 @@ CREATE POLICY "Users can view their own notifications"
   USING (
     EXISTS (
       SELECT 1 FROM user_accounts ua
-      WHERE ua.auth_id = auth.uid()
+      WHERE ua.auth_id = (SELECT auth.uid())
       AND ua.user_id = user_notifications.user_id
     )
   );
@@ -204,7 +204,7 @@ CREATE POLICY "Users can update their own notifications"
   USING (
     EXISTS (
       SELECT 1 FROM user_accounts ua
-      WHERE ua.auth_id = auth.uid()
+      WHERE ua.auth_id = (SELECT auth.uid())
       AND ua.user_id = user_notifications.user_id
     )
   );

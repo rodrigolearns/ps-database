@@ -180,7 +180,15 @@ CREATE POLICY "Anyone can view deadline configurations"
   USING (true);
 
 -- Admin-only policies for deadline management (to be implemented later)
-CREATE POLICY "Only admins can modify deadline configurations"
-  ON pr_deadlines FOR ALL TO authenticated
+CREATE POLICY "Admins can insert deadline configurations"
+  ON pr_deadlines FOR INSERT TO authenticated
+  WITH CHECK (false);  -- Disabled for now, will be enabled when admin system is ready
+
+CREATE POLICY "Admins can update deadline configurations"
+  ON pr_deadlines FOR UPDATE TO authenticated
   USING (false)  -- Disabled for now, will be enabled when admin system is ready
-  WITH CHECK (false); 
+  WITH CHECK (false);
+
+CREATE POLICY "Admins can delete deadline configurations"
+  ON pr_deadlines FOR DELETE TO authenticated
+  USING (false);  -- Disabled for now, will be enabled when admin system is ready 
