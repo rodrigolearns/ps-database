@@ -76,7 +76,7 @@ DECLARE
 BEGIN
   -- Prevent duplicate transactions (within 1 minute window)
   IF EXISTS (
-    SELECT 1 FROM wallet_transactions 
+    SELECT 1 FROM public.wallet_transactions 
     WHERE user_id = NEW.user_id 
     AND related_activity_id = NEW.related_activity_id
     AND description = NEW.description
@@ -90,7 +90,7 @@ BEGIN
   -- Get current balance with row lock for debit transactions
   IF NEW.transaction_type = 'debit' THEN
     SELECT balance INTO current_balance 
-    FROM wallet_balances 
+    FROM public.wallet_balances 
     WHERE user_id = NEW.user_id
     FOR UPDATE;
     
@@ -102,7 +102,7 @@ BEGIN
   END IF;
   
   -- Update balance
-  UPDATE wallet_balances
+  UPDATE public.wallet_balances
   SET balance = balance + NEW.amount,
       last_updated = NOW()
   WHERE user_id = NEW.user_id;
@@ -125,7 +125,7 @@ CREATE TRIGGER validate_wallet_transaction_trigger
 CREATE OR REPLACE FUNCTION initialize_user_wallet()
 RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO wallet_balances (user_id, balance)
+  INSERT INTO public.wallet_balances (user_id, balance)
   VALUES (NEW.user_id, 0)
   ON CONFLICT (user_id) DO NOTHING;
   RETURN NEW;
