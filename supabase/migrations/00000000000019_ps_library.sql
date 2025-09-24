@@ -166,7 +166,7 @@ BEGIN
         total_views = ps_library_metrics.total_views + 1,
         last_viewed_at = CURRENT_TIMESTAMP;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 -- Create function to increment download count
 CREATE OR REPLACE FUNCTION increment_paper_download_count(paper_id_param INTEGER)
@@ -184,7 +184,7 @@ BEGIN
         total_downloads = ps_library_metrics.total_downloads + 1,
         last_downloaded_at = CURRENT_TIMESTAMP;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 -- Create function to submit activity to PaperStacks Library
 CREATE OR REPLACE FUNCTION submit_activity_to_library(
@@ -253,7 +253,7 @@ BEGIN
     
     RETURN paper_id;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 -- Create view for public library papers with metrics
 CREATE VIEW ps_library_public_papers AS

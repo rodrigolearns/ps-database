@@ -46,7 +46,7 @@ BEGIN
   
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 -- Add temporary column for state change reasons
 ALTER TABLE pr_activities 
@@ -63,7 +63,7 @@ CREATE TRIGGER trigger_log_state_change
 CREATE OR REPLACE FUNCTION get_active_activities()
 RETURNS TABLE (
   activity_id INTEGER,
-  current_state activity_state,
+  current_state public.activity_state,
   stage_deadline TIMESTAMPTZ,
   template_id INTEGER,
   created_at TIMESTAMPTZ,
@@ -82,7 +82,7 @@ BEGIN
   WHERE pa.current_state != 'completed'
   ORDER BY pa.created_at;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 -- Function to check if reviewer team is complete
 CREATE OR REPLACE FUNCTION check_reviewer_team_complete(p_activity_id INTEGER)
@@ -105,7 +105,7 @@ BEGIN
   -- Return true if we have enough reviewers
   RETURN COALESCE(joined_count, 0) >= COALESCE(required_count, 0);
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 -- Function to check if all reviews are submitted for a round
 CREATE OR REPLACE FUNCTION check_all_reviews_submitted(p_activity_id INTEGER, p_round INTEGER DEFAULT 1)
@@ -135,7 +135,7 @@ BEGIN
   RETURN COALESCE(submitted_count, 0) >= COALESCE(required_count, 0) 
     AND COALESCE(required_count, 0) > 0;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 -- Function to check if author response is submitted for a round
 CREATE OR REPLACE FUNCTION check_author_response_submitted(p_activity_id INTEGER, p_round INTEGER DEFAULT 1)
@@ -152,18 +152,18 @@ BEGIN
   
   RETURN response_count > 0;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 -- Function to update activity state with logging (improved version)
 CREATE OR REPLACE FUNCTION update_activity_state(
   p_activity_id INTEGER,
-  p_new_state activity_state,
+  p_new_state public.activity_state,
   p_reason TEXT DEFAULT 'System transition',
   p_deadline_days INTEGER DEFAULT NULL
 )
 RETURNS BOOLEAN AS $$
 DECLARE
-  v_current_state activity_state;
+  v_current_state public.activity_state;
   v_new_deadline TIMESTAMPTZ;
   v_rows_updated INTEGER;
 BEGIN
@@ -236,13 +236,13 @@ EXCEPTION
     RAISE NOTICE 'Error updating activity % state: %', p_activity_id, SQLERRM;
     RETURN FALSE;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 -- Function to get activities with expired deadlines
 CREATE OR REPLACE FUNCTION get_expired_activities()
 RETURNS TABLE (
   activity_id INTEGER,
-  current_state activity_state,
+  current_state public.activity_state,
   stage_deadline TIMESTAMPTZ,
   hours_overdue NUMERIC
 ) AS $$
@@ -259,7 +259,7 @@ BEGIN
     AND pa.current_state != 'completed'
   ORDER BY pa.stage_deadline;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 -- Insert initial state log entries for existing activities
 INSERT INTO pr_state_log (activity_id, old_state, new_state, reason, changed_at)
@@ -282,5 +282,5 @@ GRANT EXECUTE ON FUNCTION get_active_activities() TO authenticated;
 GRANT EXECUTE ON FUNCTION check_reviewer_team_complete(INTEGER) TO authenticated;
 GRANT EXECUTE ON FUNCTION check_all_reviews_submitted(INTEGER, INTEGER) TO authenticated;
 GRANT EXECUTE ON FUNCTION check_author_response_submitted(INTEGER, INTEGER) TO authenticated;
-GRANT EXECUTE ON FUNCTION update_activity_state(INTEGER, activity_state, TEXT, INTEGER) TO authenticated;
+GRANT EXECUTE ON FUNCTION update_activity_state(INTEGER, public.activity_state, TEXT, INTEGER) TO authenticated;
 GRANT EXECUTE ON FUNCTION get_expired_activities() TO authenticated;

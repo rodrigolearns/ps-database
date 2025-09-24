@@ -93,7 +93,7 @@ CREATE FUNCTION public.get_user_papers(p_user_id INTEGER)
     author_names TEXT,
     author_count BIGINT,
     is_corresponding BOOLEAN,
-    current_state activity_state,
+    current_state public.activity_state,
     activity_id INTEGER,
     created_at TIMESTAMPTZ,
     updated_at TIMESTAMPTZ
@@ -110,16 +110,16 @@ CREATE FUNCTION public.get_user_papers(p_user_id INTEGER)
       ups.activity_id,
       ups.created_at,
       ups.updated_at
-    FROM user_paper_summary ups
+    FROM public.user_paper_summary ups
     WHERE ups.uploaded_by = p_user_id
        OR ups.corresponding_user_id = p_user_id
        OR EXISTS (
-         SELECT 1 FROM paper_contributors pc 
+         SELECT 1 FROM public.paper_contributors pc 
          WHERE pc.paper_id = ups.paper_id 
          AND pc.user_id = p_user_id
        )
     ORDER BY ups.updated_at DESC
-  $$;
+  $$ SET search_path = '';
 
 -- Function to refresh the materialized view
 CREATE OR REPLACE FUNCTION refresh_user_paper_summary()
@@ -127,7 +127,7 @@ RETURNS void AS $$
 BEGIN
   REFRESH MATERIALIZED VIEW CONCURRENTLY user_paper_summary;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 COMMENT ON FUNCTION public.get_user_papers IS
   'Optimized RPC: fetch all papers a user uploaded or contributed to';

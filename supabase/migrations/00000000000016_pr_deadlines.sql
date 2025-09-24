@@ -7,7 +7,7 @@
 CREATE TABLE IF NOT EXISTS pr_deadlines (
   deadline_id SERIAL PRIMARY KEY,
   template_id INTEGER NOT NULL REFERENCES pr_templates(template_id) ON DELETE CASCADE,
-  state_name activity_state NOT NULL,
+  state_name public.activity_state NOT NULL,
   deadline_days INTEGER NOT NULL,
   warning_days INTEGER DEFAULT 3,
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -38,7 +38,7 @@ CREATE TRIGGER update_pr_deadlines_updated_at
 INSERT INTO pr_deadlines (template_id, state_name, deadline_days, warning_days)
 SELECT 
   t.template_id,
-  d.state_name::activity_state,
+  d.state_name::public.activity_state,
   d.deadline_days,
   3 as warning_days
 FROM pr_templates t
@@ -59,7 +59,7 @@ CREATE OR REPLACE FUNCTION get_activities_approaching_deadline(p_warning_days IN
 RETURNS TABLE (
   activity_id INTEGER,
   activity_uuid UUID,
-  current_state activity_state,
+  current_state public.activity_state,
   stage_deadline TIMESTAMPTZ,
   days_until_deadline NUMERIC,
   template_name TEXT,
@@ -86,14 +86,14 @@ BEGIN
     AND pa.current_state != 'completed'
   ORDER BY pa.stage_deadline ASC;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 -- Function to get activities with expired deadlines
 CREATE OR REPLACE FUNCTION get_activities_with_expired_deadlines()
 RETURNS TABLE (
   activity_id INTEGER,
   activity_uuid UUID,
-  current_state activity_state,
+  current_state public.activity_state,
   stage_deadline TIMESTAMPTZ,
   days_overdue NUMERIC,
   template_name TEXT,
@@ -119,12 +119,12 @@ BEGIN
     AND pa.current_state != 'completed'
   ORDER BY pa.stage_deadline ASC;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 -- Function to set deadline when activity state changes
 CREATE OR REPLACE FUNCTION set_activity_deadline(
   p_activity_id INTEGER,
-  p_state activity_state
+  p_state public.activity_state
 ) RETURNS BOOLEAN AS $$
 DECLARE
   v_template_id INTEGER;
@@ -164,13 +164,13 @@ BEGIN
   
   RETURN TRUE;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 -- Grant permissions
 GRANT SELECT ON pr_deadlines TO authenticated;
 GRANT EXECUTE ON FUNCTION get_activities_approaching_deadline(INTEGER) TO authenticated;
 GRANT EXECUTE ON FUNCTION get_activities_with_expired_deadlines() TO authenticated;
-GRANT EXECUTE ON FUNCTION set_activity_deadline(INTEGER, activity_state) TO authenticated;
+GRANT EXECUTE ON FUNCTION set_activity_deadline(INTEGER, public.activity_state) TO authenticated;
 
 -- RLS Policies
 ALTER TABLE pr_deadlines ENABLE ROW LEVEL SECURITY;

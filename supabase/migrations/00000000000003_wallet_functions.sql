@@ -15,7 +15,7 @@ BEGIN
   
   RETURN COALESCE(v_balance, 0);
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 COMMENT ON FUNCTION get_user_wallet_balance(INTEGER) IS 'Get the current wallet balance for a user';
 
@@ -79,7 +79,7 @@ EXCEPTION
       'message', 'Error adding tokens: ' || SQLERRM
     );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 COMMENT ON FUNCTION superadmin_add_tokens(INTEGER, INTEGER, INTEGER, TEXT) IS 'Add tokens to a user wallet (superadmin only)';
 
@@ -156,7 +156,7 @@ EXCEPTION
       'message', 'Error deducting tokens: ' || SQLERRM
     );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 COMMENT ON FUNCTION superadmin_deduct_tokens(INTEGER, INTEGER, INTEGER, TEXT) IS 'Deduct tokens from a user wallet (superadmin only)';
 
@@ -175,7 +175,7 @@ BEGIN
   
   RETURN COALESCE(v_balance, 0) >= p_amount;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 COMMENT ON FUNCTION has_sufficient_balance(INTEGER, INTEGER) IS 'Check if user has sufficient balance for a transaction';
 
@@ -228,7 +228,7 @@ EXCEPTION
       'message', 'Error rewarding tokens: ' || SQLERRM
     );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 COMMENT ON FUNCTION activity_reward_tokens(INTEGER, INTEGER, INTEGER, UUID, TEXT) IS 'Reward tokens to a user for activity participation';
 
@@ -295,7 +295,7 @@ EXCEPTION
       'message', 'Error deducting tokens: ' || SQLERRM
     );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 COMMENT ON FUNCTION activity_deduct_tokens(INTEGER, INTEGER, INTEGER, UUID, TEXT) IS 'Deduct tokens from a user for activity costs or penalties'; 
 
@@ -379,7 +379,7 @@ EXCEPTION
       'message', 'Error transferring from escrow: ' || SQLERRM
     );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 COMMENT ON FUNCTION transfer_from_escrow_to_user(INTEGER, INTEGER, INTEGER, TEXT) IS 'Transfer tokens from activity escrow to user wallet';
 
@@ -478,7 +478,7 @@ EXCEPTION
       'message', 'Error transferring insurance from escrow: ' || SQLERRM
     );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 COMMENT ON FUNCTION transfer_escrow_to_superadmin(INTEGER, INTEGER, INTEGER, TEXT) IS 'Transfer insurance tokens from activity escrow to superadmin wallet'; 
 
@@ -584,6 +584,6 @@ EXCEPTION
       'message', 'Error funding escrow: ' || SQLERRM
     );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 COMMENT ON FUNCTION fund_activity_escrow(INTEGER, INTEGER, INTEGER, TEXT) IS 'Atomically transfer tokens from user wallet to activity escrow'; 

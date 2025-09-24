@@ -77,7 +77,7 @@ BEGIN
   -- Return true if activity was updated
   RETURN FOUND;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 COMMENT ON FUNCTION publish_to_paperstacks_library(INTEGER) IS 'Publishes a peer review activity to PaperStacks Library';
 
@@ -108,7 +108,7 @@ BEGIN
   -- Return true if activity was updated
   RETURN FOUND;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 COMMENT ON FUNCTION submit_to_external_journal(INTEGER, TEXT, TEXT) IS 'Submits a peer review activity to an external journal';
 
@@ -129,7 +129,7 @@ BEGIN
   -- Return true if activity was updated
   RETURN FOUND;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 COMMENT ON FUNCTION make_activity_private(INTEGER) IS 'Makes a peer review activity private (not published anywhere)';
 
@@ -157,7 +157,7 @@ BEGIN
       RETURN FOUND;
   END CASE;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 COMMENT ON FUNCTION set_submission_choice(INTEGER, TEXT) IS 'Sets the submission choice for a peer review activity';
 

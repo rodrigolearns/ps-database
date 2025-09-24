@@ -83,7 +83,7 @@ BEGIN
   WHERE edit_session_expires_at < NOW()
     AND current_editor_id IS NOT NULL;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 COMMENT ON FUNCTION release_expired_edit_locks() IS 'Automatically release expired assessment edit locks';
 
@@ -138,7 +138,7 @@ BEGIN
     'currentEditor', v_current_editor
   );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 COMMENT ON FUNCTION acquire_assessment_edit_lock(INTEGER, INTEGER, INTEGER) IS 'Acquire turn-based edit lock for collaborative assessment';
 
@@ -173,7 +173,7 @@ BEGIN
   
   RETURN v_released;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 COMMENT ON FUNCTION release_assessment_edit_lock(INTEGER, INTEGER) IS 'Release edit lock for collaborative assessment';
 
@@ -205,7 +205,7 @@ BEGIN
   -- Return true if all reviewers have finalized
   RETURN v_total_reviewers > 0 AND v_finalized_reviewers = v_total_reviewers;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 COMMENT ON FUNCTION check_all_assessments_finalized(INTEGER) IS 'Check if all reviewers have finalized their assessment for an activity';
 
@@ -216,7 +216,7 @@ CREATE OR REPLACE FUNCTION finalize_assessment_and_check_transition(
 )
 RETURNS JSONB AS $$
 DECLARE
-  v_current_state activity_state;
+  v_current_state public.activity_state;
   v_all_finalized BOOLEAN;
   v_assessment_id INTEGER;
   v_result JSONB;
@@ -277,19 +277,19 @@ EXCEPTION WHEN OTHERS THEN
     'reviewer_id', p_reviewer_id
   );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 COMMENT ON FUNCTION finalize_assessment_and_check_transition(INTEGER, INTEGER) IS 'Finalize individual reviewer assessment and transition to awarding if all reviewers are done';
 
 -- Simple function to update activity state (for debugging and setup scripts)
 CREATE OR REPLACE FUNCTION simple_update_activity_state(
   p_activity_id INTEGER,
-  p_new_state activity_state,
+  p_new_state public.activity_state,
   p_reason TEXT DEFAULT 'System transition'
 )
 RETURNS JSONB AS $$
 DECLARE
-  v_current_state activity_state;
+  v_current_state public.activity_state;
   v_rows_updated INTEGER;
 BEGIN
   -- Get current state
@@ -358,9 +358,9 @@ EXCEPTION
       'error_code', SQLSTATE
     );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
-COMMENT ON FUNCTION simple_update_activity_state(INTEGER, activity_state, TEXT) IS 'Simple function to update activity state for debugging and setup scripts';
+COMMENT ON FUNCTION simple_update_activity_state(INTEGER, public.activity_state, TEXT) IS 'Simple function to update activity state for debugging and setup scripts';
 
 -- 5. Triggers for automatic timestamps
 CREATE TRIGGER update_pr_assessments_updated_at
@@ -449,7 +449,7 @@ EXCEPTION WHEN OTHERS THEN
   -- Ignore errors if system_logs table doesn't exist
   NULL;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 COMMENT ON FUNCTION scheduled_cleanup_assessment_locks() IS 'Cleanup job for expired assessment edit locks'; 
 
@@ -539,7 +539,7 @@ BEGIN
     );
   END IF;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 COMMENT ON FUNCTION update_reviewer_finalization_conditional IS 'Handles conditional finalization updates with business rule enforcement';
 
@@ -597,7 +597,7 @@ BEGIN
     'reset_by', p_requesting_user_id
   );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 COMMENT ON FUNCTION reset_all_finalization_statuses IS 'Resets all reviewer finalization statuses for an activity';
 
@@ -606,7 +606,7 @@ GRANT EXECUTE ON FUNCTION acquire_assessment_edit_lock(INTEGER, INTEGER, INTEGER
 GRANT EXECUTE ON FUNCTION release_assessment_edit_lock(INTEGER, INTEGER) TO authenticated;
 GRANT EXECUTE ON FUNCTION check_all_assessments_finalized(INTEGER) TO authenticated;
 GRANT EXECUTE ON FUNCTION finalize_assessment_and_check_transition(INTEGER, INTEGER) TO authenticated;
-GRANT EXECUTE ON FUNCTION simple_update_activity_state(INTEGER, activity_state, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION simple_update_activity_state(INTEGER, public.activity_state, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION scheduled_cleanup_assessment_locks() TO authenticated;
 GRANT EXECUTE ON FUNCTION update_reviewer_finalization_conditional(INTEGER, INTEGER, BOOLEAN, INTEGER) TO authenticated;
 GRANT EXECUTE ON FUNCTION reset_all_finalization_statuses(INTEGER, INTEGER, TEXT) TO authenticated; 

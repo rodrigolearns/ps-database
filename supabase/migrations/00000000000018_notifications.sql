@@ -76,7 +76,7 @@ BEGIN
   
   RETURN v_notification_id;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 -- Function to create notifications for all activity participants
 CREATE OR REPLACE FUNCTION notify_activity_participants(
@@ -128,7 +128,7 @@ BEGIN
   
   RETURN v_notification_ids;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 -- Function to mark notifications as read
 CREATE OR REPLACE FUNCTION mark_notifications_read(
@@ -156,7 +156,7 @@ BEGIN
   GET DIAGNOSTICS v_updated_count = ROW_COUNT;
   RETURN v_updated_count;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 -- Function to get user notification summary
 CREATE OR REPLACE FUNCTION get_user_notification_summary(p_user_id INTEGER)
@@ -174,7 +174,7 @@ BEGIN
   FROM user_notifications
   WHERE user_id = p_user_id;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 -- State transition notifications moved to application services
 
