@@ -6,7 +6,7 @@
 -- Create storage buckets for papers and visual abstracts
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES 
-  ('paper-submissions', 'paper-submissions', true, 52428800, -- 50MB limit
+  ('paper-submissions', 'paper-submissions', true, 104857600, -- 100MB limit
    ARRAY['application/pdf', 'application/xml', 'text/xml', 'image/jpeg', 'image/png']::text[])
 ON CONFLICT (id) DO NOTHING;
 

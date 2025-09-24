@@ -6,7 +6,13 @@
     "migrate": "supabase db push",
     "migrate:local": "supabase db reset",
     "seed": "node ./scripts/seed.js",
-    "generate:types": "supabase gen types typescript --local > ../ps-frontend/src/types/supabase.ts"
+    "generate:types": "supabase gen types typescript --local > ../ps-frontend/src/types/supabase.ts",
+    "capture": "./scripts/capture-changes.sh",
+    "diff": "supabase db diff --use-migra --schema public,auth,storage",
+    "diff:file": "supabase db diff --use-migra --schema public,auth,storage > schema-diff-$(date +%Y%m%d-%H%M%S).sql",
+    "schema:dump": "supabase db dump --data-only=false --schema-only=true --file=schema-dump-$(date +%Y%m%d-%H%M%S).sql",
+    "validate": "supabase db lint",
+    "status": "supabase status"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0"

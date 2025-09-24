@@ -115,29 +115,7 @@ CREATE INDEX IF NOT EXISTS idx_pr_timeline_created ON pr_timeline_events(created
 CREATE INDEX IF NOT EXISTS idx_pr_timeline_type ON pr_timeline_events(event_type);
 CREATE INDEX IF NOT EXISTS idx_pr_timeline_user ON pr_timeline_events(user_id);
 
--- Simple trigger to set commitment deadline
-CREATE OR REPLACE FUNCTION set_commitment_deadline()
-RETURNS TRIGGER AS $$
-BEGIN
-  -- Set 72-hour deadline when joining
-  IF NEW.status = 'joined' AND OLD.status IS DISTINCT FROM 'joined' THEN
-    NEW.commitment_deadline = NEW.joined_at + INTERVAL '72 hours';
-  END IF;
-  
-  -- Clear deadline when locked in
-  IF NEW.status = 'locked_in' THEN
-    NEW.locked_in_at = COALESCE(NEW.locked_in_at, NOW());
-    NEW.commitment_deadline = NULL;
-  END IF;
-  
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER set_reviewer_commitment_deadline
-  BEFORE INSERT OR UPDATE ON pr_reviewer_teams
-  FOR EACH ROW
-  EXECUTE FUNCTION set_commitment_deadline();
+-- Commitment deadline logic moved to application services
 
 -- Basic triggers
 CREATE TRIGGER update_pr_reviewer_teams_updated_at
@@ -150,69 +128,9 @@ CREATE TRIGGER update_pr_participants_updated_at
   FOR EACH ROW
   EXECUTE FUNCTION set_updated_at();
 
--- Function to sync participants when activities are created
-CREATE OR REPLACE FUNCTION sync_participant_on_activity_create()
-RETURNS TRIGGER AS $$
-BEGIN
-  -- Add author as participant when activity is created
-  INSERT INTO pr_participants (activity_id, user_id, role)
-  SELECT 
-    NEW.activity_id,
-    p.uploaded_by,
-    'author'
-  FROM papers p
-  WHERE p.paper_id = NEW.paper_id
-  ON CONFLICT (activity_id, user_id, role) DO NOTHING;
-  
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
+-- Participant creation moved to application services
 
-CREATE TRIGGER sync_author_participant_on_create
-AFTER INSERT ON pr_activities
-FOR EACH ROW
-EXECUTE FUNCTION sync_participant_on_activity_create();
-
--- Function to sync reviewer participants
-CREATE OR REPLACE FUNCTION sync_reviewer_participant()
-RETURNS TRIGGER AS $$
-BEGIN
-
-  IF TG_OP = 'INSERT' OR (TG_OP = 'UPDATE' AND OLD.user_id IS DISTINCT FROM NEW.user_id) THEN
-    -- Sync to participants table
-    INSERT INTO pr_participants (activity_id, user_id, role, status, joined_at)
-    VALUES (NEW.activity_id, NEW.user_id, 'reviewer', NEW.status::text, NEW.joined_at)
-    ON CONFLICT (activity_id, user_id, role) 
-    DO UPDATE SET 
-      status = EXCLUDED.status,
-      left_at = CASE 
-        WHEN NEW.status = 'removed' THEN NEW.removed_at
-        ELSE NULL
-      END,
-      updated_at = NOW();
-  END IF;
-  
-  -- Handle status changes
-  IF TG_OP = 'UPDATE' AND OLD.status IS DISTINCT FROM NEW.status THEN
-    -- Update participant status
-    UPDATE pr_participants
-    SET 
-      status = NEW.status::text,
-      left_at = CASE WHEN NEW.status = 'removed' THEN NOW() ELSE NULL END,
-      updated_at = NOW()
-    WHERE activity_id = NEW.activity_id 
-      AND user_id = NEW.user_id 
-      AND role = 'reviewer';
-  END IF;
-  
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER sync_reviewer_to_participants
-AFTER INSERT OR UPDATE ON pr_reviewer_teams
-FOR EACH ROW
-EXECUTE FUNCTION sync_reviewer_participant();
+-- Reviewer participant synchronization moved to application services
 
 -- State change triggers removed - timeline events will be created in application services
 
@@ -226,9 +144,38 @@ CREATE POLICY "Anyone can view participants"
   ON pr_participants FOR SELECT
   USING (true);
 
+CREATE POLICY "Service operations can manage participants"
+  ON pr_participants FOR ALL
+  USING (true)
+  WITH CHECK (true);
+
+CREATE POLICY "Users can view their own participation"
+  ON pr_participants FOR SELECT TO authenticated
+  USING (
+    user_id = (
+      SELECT user_id FROM user_accounts 
+      WHERE auth_id = auth.uid()
+    )
+    OR
+    -- Activity creators can see all participants
+    EXISTS (
+      SELECT 1 FROM pr_activities pa
+      WHERE pa.activity_id = pr_participants.activity_id
+      AND pa.creator_id = (
+        SELECT user_id FROM user_accounts 
+        WHERE auth_id = auth.uid()
+      )
+    )
+  );
+
 CREATE POLICY "Anyone can view timeline events"
   ON pr_timeline_events FOR SELECT
   USING (true);
+
+CREATE POLICY "Service operations can manage timeline events"
+  ON pr_timeline_events FOR ALL
+  USING (true)
+  WITH CHECK (true);
 
 -- Grant permissions
 GRANT SELECT ON pr_participants TO authenticated;

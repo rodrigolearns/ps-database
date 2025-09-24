@@ -140,7 +140,7 @@ BEGIN
     NEW.updated_at = CURRENT_TIMESTAMP;
     RETURN NEW;
 END;
-$$ language 'plpgsql';
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 CREATE TRIGGER update_ps_library_papers_updated_at 
     BEFORE UPDATE ON ps_library_papers 
