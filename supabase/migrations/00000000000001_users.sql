@@ -23,6 +23,9 @@ CREATE TABLE IF NOT EXISTS user_accounts (
   affiliations JSONB DEFAULT '[]',
   research_interests TEXT[],
   profile_image_url TEXT,
+  profile_thumbnail_32 TEXT,
+  profile_thumbnail_64 TEXT,
+  profile_thumbnail_128 TEXT,
   role user_role NOT NULL DEFAULT 'user',
   default_count INTEGER DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -44,6 +47,9 @@ COMMENT ON COLUMN user_accounts.orcid IS 'ORCID identifier for the user';
 COMMENT ON COLUMN user_accounts.affiliations IS 'Institutional affiliations of the user';
 COMMENT ON COLUMN user_accounts.research_interests IS 'Research interests of the user';
 COMMENT ON COLUMN user_accounts.profile_image_url IS 'URL to the user profile image';
+COMMENT ON COLUMN user_accounts.profile_thumbnail_32 IS 'URL to 32x32px circular profile thumbnail for feed avatars';
+COMMENT ON COLUMN user_accounts.profile_thumbnail_64 IS 'URL to 64x64px circular profile thumbnail for profile display';
+COMMENT ON COLUMN user_accounts.profile_thumbnail_128 IS 'URL to 128x128px circular profile thumbnail for high-DPI displays';
 COMMENT ON COLUMN user_accounts.role IS 'Role of the user in the system';
 COMMENT ON COLUMN user_accounts.default_count IS 'Count of times user has defaulted on review commitments';
 COMMENT ON COLUMN user_accounts.created_at IS 'When the user account was created';
