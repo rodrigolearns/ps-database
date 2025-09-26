@@ -24,6 +24,9 @@ SELECT
   t.reviewer_count as template_reviewers,
   t.template_id,
   
+  -- Escrow information (for funding validation)
+  a.escrow_balance,
+  
   -- Corresponding author (registered user)
   ca.full_name as corresponding_author,
   ca.email as corresponding_author_email,
@@ -41,10 +44,7 @@ SELECT
    FROM pr_activity_permissions pap 
    WHERE pap.activity_id = a.activity_id 
      AND pap.role = 'reviewer') as active_reviewers,
-  (SELECT COUNT(*) 
-   FROM pr_activity_permissions pap 
-   WHERE pap.activity_id = a.activity_id 
-     AND pap.role = 'reviewer') as total_reviewers,
+  t.reviewer_count as total_reviewers,
   
   -- Stage timeline information
   (SELECT te.created_at 
@@ -94,6 +94,9 @@ JOIN papers p ON a.paper_id = p.paper_id
 JOIN pr_templates t ON a.template_id = t.template_id
 LEFT JOIN paper_contributors pc ON pc.paper_id = p.paper_id AND pc.is_corresponding = true
 LEFT JOIN user_accounts ca ON pc.user_id = ca.user_id
+
+-- SECURITY: Only show funded activities (prevents unfunded activities from appearing)
+WHERE a.escrow_balance > 0
 
 ORDER BY a.posted_at DESC;
 

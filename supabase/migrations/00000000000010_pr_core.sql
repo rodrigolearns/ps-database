@@ -24,12 +24,7 @@ BEGIN
     RETURN FALSE;
   END IF;
 
-  -- Deduct tokens
-  UPDATE wallet_balances
-  SET balance = balance - p_amount
-  WHERE user_id = p_user_id;
-
-  -- Record transaction
+  -- Record transaction (trigger will update wallet balance automatically)
   INSERT INTO wallet_transactions (
     user_id, amount, transaction_type,
     description, related_activity_id, related_activity_uuid
@@ -318,7 +313,7 @@ CREATE TRIGGER update_pr_stage_data_updated_at
 INSERT INTO pr_templates(name, reviewer_count, review_rounds, total_tokens, extra_tokens)
 VALUES
   ('1-round,3-reviewers,10-tokens', 3, 1, 10, 2),
-  ('2-round,4-reviewers,15-tokens', 4, 2, 15, 2)
+  ('2-round,4-reviewers,20-tokens', 4, 2, 20, 2)
 ON CONFLICT (name) DO UPDATE
   SET reviewer_count=EXCLUDED.reviewer_count,
       review_rounds=EXCLUDED.review_rounds,

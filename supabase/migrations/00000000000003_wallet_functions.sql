@@ -535,21 +535,16 @@ BEGIN
     );
   END IF;
   
-  -- ATOMIC TRANSFER: Deduct from user wallet, add to activity escrow
+  -- ATOMIC TRANSFER: Add to activity escrow, then record transaction (trigger updates wallet)
   
-  -- 1. Deduct tokens from user wallet
-  UPDATE wallet_balances
-  SET balance = balance - p_amount,
-      last_updated = NOW()
-  WHERE user_id = p_user_id;
-  
-  -- 2. Add tokens to activity escrow
+  -- 1. Add tokens to activity escrow and update funding amount
   UPDATE pr_activities
   SET escrow_balance = escrow_balance + p_amount,
+      funding_amount = COALESCE(funding_amount, 0) + p_amount,
       updated_at = NOW()
   WHERE activity_id = p_activity_id;
   
-  -- 3. Record the transaction (debit from user)
+  -- 2. Record the transaction (debit from user) - trigger will update wallet balance automatically
   INSERT INTO wallet_transactions (
     user_id,
     amount,
@@ -584,6 +579,6 @@ EXCEPTION
       'message', 'Error funding escrow: ' || SQLERRM
     );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = 'public';
 
 COMMENT ON FUNCTION fund_activity_escrow(INTEGER, INTEGER, INTEGER, TEXT) IS 'Atomically transfer tokens from user wallet to activity escrow'; 
