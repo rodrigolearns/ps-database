@@ -9,6 +9,18 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 COMMENT ON TYPE reviewer_status IS 'Status of reviewer in a team (simplified)';
 
+-- Create ENUM for PR activity roles (unified permission system)
+DO $$ BEGIN
+  CREATE TYPE pr_activity_role AS ENUM (
+    'corresponding_author',
+    'spectating_author', 
+    'reviewer',
+    'reader',
+    'spectating_admin'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+COMMENT ON TYPE pr_activity_role IS 'Unified roles for PR activity permissions';
+
 -- Reviewer team members table
 CREATE TABLE IF NOT EXISTS pr_reviewer_teams (
   team_id SERIAL PRIMARY KEY,
@@ -36,30 +48,24 @@ COMMENT ON COLUMN pr_reviewer_teams.locked_in_at IS 'When reviewer submitted ini
 COMMENT ON COLUMN pr_reviewer_teams.removed_at IS 'When the reviewer was removed';
 COMMENT ON COLUMN pr_reviewer_teams.removal_reason IS 'Reason for removal (timeout, manual, etc.)';
 
--- Unified participants table for all roles in PR activities
-CREATE TABLE IF NOT EXISTS pr_participants (
-  participant_id SERIAL PRIMARY KEY,
+-- Unified permission table for PR activities (replaces pr_participants)
+CREATE TABLE IF NOT EXISTS pr_activity_permissions (
+  permission_id SERIAL PRIMARY KEY,
   activity_id INTEGER NOT NULL REFERENCES pr_activities(activity_id) ON DELETE CASCADE,
   user_id INTEGER NOT NULL REFERENCES user_accounts(user_id) ON DELETE CASCADE,
-  role TEXT NOT NULL CHECK (role IN ('author', 'reviewer', 'editor', 'observer')),
-  status TEXT DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'removed', 'joined', 'locked_in')),
-  joined_at TIMESTAMPTZ DEFAULT NOW(),
-  left_at TIMESTAMPTZ,
-  metadata JSONB DEFAULT '{}',
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(activity_id, user_id, role)
+  role pr_activity_role NOT NULL,
+  granted_at TIMESTAMPTZ DEFAULT NOW(),
+  granted_by INTEGER REFERENCES user_accounts(user_id),
+  UNIQUE(activity_id, user_id)
 );
 
-COMMENT ON TABLE pr_participants IS 'Unified tracking of all participants in PR activities';
-COMMENT ON COLUMN pr_participants.participant_id IS 'Primary key for participant record';
-COMMENT ON COLUMN pr_participants.activity_id IS 'Foreign key to pr_activities';
-COMMENT ON COLUMN pr_participants.user_id IS 'Foreign key to user_accounts';
-COMMENT ON COLUMN pr_participants.role IS 'Participant role: author, reviewer, editor, observer';
-COMMENT ON COLUMN pr_participants.status IS 'Current status of the participant';
-COMMENT ON COLUMN pr_participants.joined_at IS 'When the participant joined the activity';
-COMMENT ON COLUMN pr_participants.left_at IS 'When the participant left the activity';
-COMMENT ON COLUMN pr_participants.metadata IS 'Additional metadata for the participant';
+COMMENT ON TABLE pr_activity_permissions IS 'Unified permission system for PR activities';
+COMMENT ON COLUMN pr_activity_permissions.permission_id IS 'Primary key for permission record';
+COMMENT ON COLUMN pr_activity_permissions.activity_id IS 'Foreign key to pr_activities';
+COMMENT ON COLUMN pr_activity_permissions.user_id IS 'Foreign key to user_accounts';
+COMMENT ON COLUMN pr_activity_permissions.role IS 'User role in this specific activity';
+COMMENT ON COLUMN pr_activity_permissions.granted_at IS 'When the permission was granted';
+COMMENT ON COLUMN pr_activity_permissions.granted_by IS 'Who granted this permission (optional)';
 
 -- Timeline events table for comprehensive activity history
 CREATE TABLE IF NOT EXISTS pr_timeline_events (
@@ -103,11 +109,10 @@ CREATE INDEX IF NOT EXISTS idx_pr_reviewer_teams_status ON pr_reviewer_teams (st
 CREATE INDEX IF NOT EXISTS idx_pr_reviewer_teams_commitment_deadline ON pr_reviewer_teams (commitment_deadline);
 CREATE INDEX IF NOT EXISTS idx_pr_reviewer_teams_joined_at ON pr_reviewer_teams (joined_at);
 
--- Indexes for pr_participants
-CREATE INDEX IF NOT EXISTS idx_pr_participants_activity ON pr_participants(activity_id);
-CREATE INDEX IF NOT EXISTS idx_pr_participants_user ON pr_participants(user_id);
-CREATE INDEX IF NOT EXISTS idx_pr_participants_role ON pr_participants(role);
-CREATE INDEX IF NOT EXISTS idx_pr_participants_status ON pr_participants(status);
+-- Indexes for pr_activity_permissions
+CREATE INDEX IF NOT EXISTS idx_pr_activity_permissions_activity ON pr_activity_permissions(activity_id);
+CREATE INDEX IF NOT EXISTS idx_pr_activity_permissions_user ON pr_activity_permissions(user_id);
+CREATE INDEX IF NOT EXISTS idx_pr_activity_permissions_role ON pr_activity_permissions(role);
 
 -- Indexes for pr_timeline_events
 CREATE INDEX IF NOT EXISTS idx_pr_timeline_created ON pr_timeline_events(created_at);
@@ -122,10 +127,7 @@ CREATE TRIGGER update_pr_reviewer_teams_updated_at
   FOR EACH ROW
   EXECUTE FUNCTION set_updated_at(); 
 
-CREATE TRIGGER update_pr_participants_updated_at
-  BEFORE UPDATE ON pr_participants
-  FOR EACH ROW
-  EXECUTE FUNCTION set_updated_at();
+-- No trigger needed for pr_activity_permissions (no updated_at column)
 
 -- Participant creation moved to application services
 
@@ -136,24 +138,24 @@ CREATE TRIGGER update_pr_participants_updated_at
 
 
 -- RLS policies for new tables
-ALTER TABLE pr_participants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pr_activity_permissions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pr_timeline_events ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Anyone can view participants"
-  ON pr_participants FOR SELECT
+CREATE POLICY "Anyone can view activity permissions"
+  ON pr_activity_permissions FOR SELECT
   USING (true);
 
-CREATE POLICY "Service operations can insert participants"
-  ON pr_participants FOR INSERT
+CREATE POLICY "Service operations can insert activity permissions"
+  ON pr_activity_permissions FOR INSERT
   WITH CHECK (true);
 
-CREATE POLICY "Service operations can update participants"
-  ON pr_participants FOR UPDATE
+CREATE POLICY "Service operations can update activity permissions"
+  ON pr_activity_permissions FOR UPDATE
   USING (true)
   WITH CHECK (true);
 
-CREATE POLICY "Service operations can delete participants"
-  ON pr_participants FOR DELETE
+CREATE POLICY "Service operations can delete activity permissions"
+  ON pr_activity_permissions FOR DELETE
   USING (true);
 
 CREATE POLICY "Anyone can view timeline events"
@@ -173,7 +175,32 @@ CREATE POLICY "Service operations can delete timeline events"
   ON pr_timeline_events FOR DELETE
   USING (true);
 
+-- Data migration: Populate pr_activity_permissions from existing data
+-- Migrate paper contributors as authors (corresponding vs spectating)
+INSERT INTO pr_activity_permissions (activity_id, user_id, role)
+SELECT DISTINCT
+  p.activity_id,
+  pc.user_id,
+  CASE 
+    WHEN pc.is_corresponding THEN 'corresponding_author'::pr_activity_role
+    ELSE 'spectating_author'::pr_activity_role
+  END
+FROM pr_activities p
+JOIN papers pap ON p.paper_id = pap.paper_id  
+JOIN paper_contributors pc ON pap.paper_id = pc.paper_id
+ON CONFLICT (activity_id, user_id) DO NOTHING;
+
+-- Migrate reviewer team members as reviewers
+INSERT INTO pr_activity_permissions (activity_id, user_id, role)
+SELECT DISTINCT
+  rt.activity_id,
+  rt.user_id,
+  'reviewer'::pr_activity_role
+FROM pr_reviewer_teams rt
+WHERE rt.status IN ('joined', 'locked_in')
+ON CONFLICT (activity_id, user_id) DO NOTHING;
+
 -- Grant permissions
-GRANT SELECT ON pr_participants TO authenticated;
+GRANT SELECT ON pr_activity_permissions TO authenticated;
 GRANT SELECT ON pr_timeline_events TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON pr_reviewer_teams TO authenticated; 

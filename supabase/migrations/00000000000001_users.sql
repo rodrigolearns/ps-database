@@ -5,7 +5,7 @@
 
 -- Create ENUM for user roles
 DO $$ BEGIN
-  CREATE TYPE user_role AS ENUM ('user', 'editor', 'admin', 'superadmin');
+  CREATE TYPE user_role AS ENUM ('user', 'stacker', 'admin', 'superadmin');
 EXCEPTION
   WHEN duplicate_object THEN NULL;
 END $$;
