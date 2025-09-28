@@ -52,12 +52,12 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 ALTER TABLE pr_activities 
 ADD COLUMN IF NOT EXISTS state_change_reason TEXT;
 
--- Create trigger for automatic state logging
-DROP TRIGGER IF EXISTS trigger_log_state_change ON pr_activities;
-CREATE TRIGGER trigger_log_state_change
-  AFTER UPDATE ON pr_activities
-  FOR EACH ROW
-  EXECUTE FUNCTION log_state_change();
+-- Trigger removed for simplified progression system
+-- DROP TRIGGER IF EXISTS trigger_log_state_change ON pr_activities;
+-- CREATE TRIGGER trigger_log_state_change
+--   AFTER UPDATE ON pr_activities
+--   FOR EACH ROW
+--   EXECUTE FUNCTION log_state_change();
 
 -- Function to get active activities for processing
 CREATE OR REPLACE FUNCTION get_active_activities()

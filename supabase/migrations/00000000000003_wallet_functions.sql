@@ -21,19 +21,31 @@ COMMENT ON FUNCTION get_user_wallet_balance(INTEGER) IS 'Get the current wallet 
 
 -- Function for superadmin to add tokens to user wallet
 CREATE OR REPLACE FUNCTION superadmin_add_tokens(
-  p_superadmin_id INTEGER,
   p_target_user_id INTEGER,
   p_amount INTEGER,
   p_description TEXT DEFAULT 'Superadmin token grant'
 )
 RETURNS JSONB AS $$
 DECLARE
+  v_caller_user_id INTEGER;
   v_is_superadmin BOOLEAN;
 BEGIN
-  -- Verify the superadmin role
+  -- Get ACTUAL caller's user_id from auth context
+  SELECT user_id INTO v_caller_user_id 
+  FROM user_accounts 
+  WHERE auth_id = auth.uid();
+  
+  IF v_caller_user_id IS NULL THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'message', 'Authentication required'
+    );
+  END IF;
+  
+  -- Verify the ACTUAL caller is superadmin
   SELECT (role = 'superadmin') INTO v_is_superadmin
   FROM user_accounts
-  WHERE user_id = p_superadmin_id;
+  WHERE user_id = v_caller_user_id;
   
   IF NOT v_is_superadmin THEN
     RETURN jsonb_build_object(
@@ -61,7 +73,7 @@ BEGIN
     p_amount,
     'credit',
     'superadmin',
-    p_superadmin_id,
+    v_caller_user_id,
     p_description
   );
   
@@ -81,24 +93,36 @@ EXCEPTION
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
-COMMENT ON FUNCTION superadmin_add_tokens(INTEGER, INTEGER, INTEGER, TEXT) IS 'Add tokens to a user wallet (superadmin only)';
+COMMENT ON FUNCTION superadmin_add_tokens(INTEGER, INTEGER, TEXT) IS 'Add tokens to a user wallet (superadmin only - caller verified via auth.uid())';
 
 -- Function for superadmin to deduct tokens from user wallet
 CREATE OR REPLACE FUNCTION superadmin_deduct_tokens(
-  p_superadmin_id INTEGER,
   p_target_user_id INTEGER,
   p_amount INTEGER,
   p_description TEXT DEFAULT 'Superadmin token deduction'
 )
 RETURNS JSONB AS $$
 DECLARE
+  v_caller_user_id INTEGER;
   v_is_superadmin BOOLEAN;
   v_balance INTEGER;
 BEGIN
-  -- Verify the superadmin role
+  -- Get ACTUAL caller's user_id from auth context
+  SELECT user_id INTO v_caller_user_id 
+  FROM user_accounts 
+  WHERE auth_id = auth.uid();
+  
+  IF v_caller_user_id IS NULL THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'message', 'Authentication required'
+    );
+  END IF;
+  
+  -- Verify the ACTUAL caller is superadmin
   SELECT (role = 'superadmin') INTO v_is_superadmin
   FROM user_accounts
-  WHERE user_id = p_superadmin_id;
+  WHERE user_id = v_caller_user_id;
   
   IF NOT v_is_superadmin THEN
     RETURN jsonb_build_object(
@@ -138,7 +162,7 @@ BEGIN
     -p_amount,
     'debit',
     'superadmin',
-    p_superadmin_id,
+    v_caller_user_id,
     p_description
   );
   
@@ -158,7 +182,7 @@ EXCEPTION
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
-COMMENT ON FUNCTION superadmin_deduct_tokens(INTEGER, INTEGER, INTEGER, TEXT) IS 'Deduct tokens from a user wallet (superadmin only)';
+COMMENT ON FUNCTION superadmin_deduct_tokens(INTEGER, INTEGER, TEXT) IS 'Deduct tokens from a user wallet (superadmin only - caller verified via auth.uid())';
 
 -- Function to check if user has sufficient balance
 CREATE OR REPLACE FUNCTION has_sufficient_balance(
@@ -386,20 +410,32 @@ COMMENT ON FUNCTION transfer_from_escrow_to_user(INTEGER, INTEGER, INTEGER, TEXT
 -- Escrow transfer function for superadmin (for insurance tokens)
 CREATE OR REPLACE FUNCTION transfer_escrow_to_superadmin(
   p_activity_id INTEGER,
-  p_superadmin_id INTEGER,
   p_amount INTEGER,
   p_description TEXT DEFAULT 'Insurance transfer from escrow'
 )
 RETURNS JSONB AS $$
 DECLARE
+  v_caller_user_id INTEGER;
   v_escrow_balance INTEGER;
   v_activity_uuid UUID;
   v_is_superadmin BOOLEAN;
 BEGIN
-  -- Verify the superadmin role
+  -- Get ACTUAL caller's user_id from auth context
+  SELECT user_id INTO v_caller_user_id 
+  FROM user_accounts 
+  WHERE auth_id = auth.uid();
+  
+  IF v_caller_user_id IS NULL THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'message', 'Authentication required'
+    );
+  END IF;
+  
+  -- Verify the ACTUAL caller is superadmin
   SELECT (role = 'superadmin') INTO v_is_superadmin
   FROM user_accounts
-  WHERE user_id = p_superadmin_id;
+  WHERE user_id = v_caller_user_id;
   
   IF NOT v_is_superadmin THEN
     RETURN jsonb_build_object(
@@ -452,11 +488,11 @@ BEGIN
     related_activity_uuid,
     description
   ) VALUES (
-    p_superadmin_id,
+    v_caller_user_id,
     p_amount,
     'credit',
     'superadmin',
-    p_superadmin_id,
+    v_caller_user_id,
     p_activity_id,
     v_activity_uuid,
     p_description
@@ -466,9 +502,9 @@ BEGIN
     'success', true,
     'message', 'Insurance tokens transferred successfully from escrow',
     'amount', p_amount,
-    'superadmin_id', p_superadmin_id,
+    'superadmin_id', v_caller_user_id,
     'activity_id', p_activity_id,
-    'new_superadmin_balance', get_user_wallet_balance(p_superadmin_id),
+    'new_superadmin_balance', get_user_wallet_balance(v_caller_user_id),
     'new_escrow_balance', v_escrow_balance - p_amount
   );
 EXCEPTION
@@ -480,7 +516,7 @@ EXCEPTION
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
-COMMENT ON FUNCTION transfer_escrow_to_superadmin(INTEGER, INTEGER, INTEGER, TEXT) IS 'Transfer insurance tokens from activity escrow to superadmin wallet'; 
+COMMENT ON FUNCTION transfer_escrow_to_superadmin(INTEGER, INTEGER, TEXT) IS 'Transfer insurance tokens from activity escrow to superadmin wallet (caller verified via auth.uid())'; 
 
 -- Atomic escrow funding function (transfer tokens from user wallet to activity escrow)
 CREATE OR REPLACE FUNCTION fund_activity_escrow(

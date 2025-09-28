@@ -539,7 +539,10 @@ CREATE OR REPLACE FUNCTION update_activity_state(
   p_new_state activity_state,
   p_user_id INTEGER,
   p_reason TEXT
-) RETURNS BOOLEAN AS $$
+) RETURNS BOOLEAN 
+LANGUAGE plpgsql 
+SECURITY DEFINER
+AS $$
 BEGIN
   -- Simple atomic update - no overengineering
   UPDATE pr_activities 
@@ -549,7 +552,7 @@ BEGIN
   -- Return true if update worked, false if state mismatch
   RETURN FOUND;
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
 -- =============================================
 -- PERFORMANCE OPTIMIZATION INDEXES

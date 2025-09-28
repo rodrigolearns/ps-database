@@ -110,8 +110,8 @@ CREATE POLICY "assessment_participant_access" ON pr_assessments
   );
 
 -- Add comments explaining the new public access rules
-COMMENT ON POLICY "review_submissions_access" ON pr_review_submissions IS 
-'Allows participant access during review and public access after publication';
+COMMENT ON POLICY "review_submissions_simple" ON pr_review_submissions IS 
+'Simple RLS: Only reviewers in activity can write reviews under their own name during review stages';
 
 COMMENT ON POLICY "author_responses_access" ON pr_author_responses IS 
 'Allows participant access during review and public access after publication';
