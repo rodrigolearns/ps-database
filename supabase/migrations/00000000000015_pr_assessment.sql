@@ -281,87 +281,6 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 COMMENT ON FUNCTION finalize_assessment_and_check_transition(INTEGER, INTEGER) IS 'Finalize individual reviewer assessment and transition to awarding if all reviewers are done';
 
--- Simple function to update activity state (for debugging and setup scripts)
-CREATE OR REPLACE FUNCTION simple_update_activity_state(
-  p_activity_id INTEGER,
-  p_new_state public.activity_state,
-  p_reason TEXT DEFAULT 'System transition'
-)
-RETURNS JSONB AS $$
-DECLARE
-  v_current_state public.activity_state;
-  v_rows_updated INTEGER;
-BEGIN
-  -- Get current state
-  SELECT current_state INTO v_current_state
-  FROM pr_activities
-  WHERE activity_id = p_activity_id;
-  
-  -- Check if activity exists
-  IF v_current_state IS NULL THEN
-    RETURN jsonb_build_object(
-      'success', false,
-      'message', 'Activity not found',
-      'activity_id', p_activity_id
-    );
-  END IF;
-  
-  -- Skip if already in target state
-  IF v_current_state = p_new_state THEN
-    RETURN jsonb_build_object(
-      'success', true,
-      'message', 'Activity already in target state',
-      'activity_id', p_activity_id,
-      'old_state', v_current_state,
-      'new_state', p_new_state
-    );
-  END IF;
-  
-  -- Update activity state
-  UPDATE pr_activities 
-  SET 
-    current_state = p_new_state,
-    updated_at = NOW()
-  WHERE activity_id = p_activity_id;
-  
-  GET DIAGNOSTICS v_rows_updated = ROW_COUNT;
-  
-  -- Log the state change
-  INSERT INTO pr_state_log (
-    activity_id,
-    old_state,
-    new_state,
-    reason,
-    changed_at
-  ) VALUES (
-    p_activity_id,
-    v_current_state,
-    p_new_state,
-    p_reason,
-    NOW()
-  );
-  
-  RETURN jsonb_build_object(
-    'success', true,
-    'message', 'State updated successfully',
-    'activity_id', p_activity_id,
-    'old_state', v_current_state,
-    'new_state', p_new_state,
-    'rows_updated', v_rows_updated
-  );
-EXCEPTION
-  WHEN OTHERS THEN
-    RETURN jsonb_build_object(
-      'success', false,
-      'message', 'Error updating state: ' || SQLERRM,
-      'activity_id', p_activity_id,
-      'error_code', SQLSTATE
-    );
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
-
-COMMENT ON FUNCTION simple_update_activity_state(INTEGER, public.activity_state, TEXT) IS 'Simple function to update activity state for debugging and setup scripts';
-
 -- 5. Triggers for automatic timestamps
 CREATE TRIGGER update_pr_assessments_updated_at
     BEFORE UPDATE ON pr_assessments
@@ -606,7 +525,6 @@ GRANT EXECUTE ON FUNCTION acquire_assessment_edit_lock(INTEGER, INTEGER, INTEGER
 GRANT EXECUTE ON FUNCTION release_assessment_edit_lock(INTEGER, INTEGER) TO authenticated;
 GRANT EXECUTE ON FUNCTION check_all_assessments_finalized(INTEGER) TO authenticated;
 GRANT EXECUTE ON FUNCTION finalize_assessment_and_check_transition(INTEGER, INTEGER) TO authenticated;
-GRANT EXECUTE ON FUNCTION simple_update_activity_state(INTEGER, public.activity_state, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION scheduled_cleanup_assessment_locks() TO authenticated;
 GRANT EXECUTE ON FUNCTION update_reviewer_finalization_conditional(INTEGER, INTEGER, BOOLEAN, INTEGER) TO authenticated;
 GRANT EXECUTE ON FUNCTION reset_all_finalization_statuses(INTEGER, INTEGER, TEXT) TO authenticated;

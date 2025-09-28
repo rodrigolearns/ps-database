@@ -60,6 +60,10 @@ CREATE INDEX IF NOT EXISTS idx_pr_review_submissions_round ON pr_review_submissi
 CREATE INDEX IF NOT EXISTS idx_pr_review_submissions_initial_assessment ON pr_review_submissions (is_initial_assessment);
 CREATE INDEX IF NOT EXISTS idx_pr_review_submissions_submitted_at ON pr_review_submissions (submitted_at);
 
+-- Prevent duplicate reviews: one review per reviewer per round
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pr_review_submissions_unique_per_round 
+ON pr_review_submissions (activity_id, reviewer_id, round_number);
+
 CREATE INDEX IF NOT EXISTS idx_pr_author_responses_activity_id ON pr_author_responses (activity_id);
 CREATE INDEX IF NOT EXISTS idx_pr_author_responses_user_id ON pr_author_responses (user_id);
 CREATE INDEX IF NOT EXISTS idx_pr_author_responses_round ON pr_author_responses (round_number);

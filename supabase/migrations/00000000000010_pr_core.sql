@@ -540,88 +540,14 @@ CREATE OR REPLACE FUNCTION update_activity_state(
   p_user_id INTEGER,
   p_reason TEXT
 ) RETURNS BOOLEAN AS $$
-DECLARE
-  v_rows_updated INTEGER;
 BEGIN
-  -- Atomic compare-and-swap update to prevent race conditions
-  -- This eliminates the gap between SELECT and UPDATE
+  -- Simple atomic update - no overengineering
   UPDATE pr_activities 
-  SET current_state = p_new_state,
-      state_changed_at = NOW(),
-      state_changed_by = p_user_id,
-      updated_at = NOW()
-  WHERE activity_id = p_activity_id 
-    AND current_state = p_old_state; -- Atomic condition check
+  SET current_state = p_new_state, updated_at = NOW()
+  WHERE activity_id = p_activity_id AND current_state = p_old_state;
   
-  GET DIAGNOSTICS v_rows_updated = ROW_COUNT;
-  
-  -- If no rows were updated, the state didn't match
-  IF v_rows_updated = 0 THEN
-    DECLARE
-      v_actual_state activity_state;
-    BEGIN
-      SELECT current_state INTO v_actual_state 
-      FROM pr_activities 
-      WHERE activity_id = p_activity_id;
-      
-      IF v_actual_state IS NULL THEN
-        RAISE EXCEPTION 'Activity % not found', p_activity_id;
-      ELSE
-        RAISE EXCEPTION 'State mismatch: expected %, got %', p_old_state, v_actual_state;
-      END IF;
-    END;
-  END IF;
-  
-  -- Create state audit log entry
-  INSERT INTO pr_state_log (
-    activity_id, 
-    old_state, 
-    new_state, 
-    changed_by, 
-    reason
-  ) VALUES (
-    p_activity_id,
-    p_old_state,
-    p_new_state,
-    p_user_id,
-    p_reason
-  );
-  
-  -- Create timeline event for stage transition
-  INSERT INTO pr_timeline_events (
-    activity_id,
-    event_type,
-    title,
-    description,
-    user_id,
-    user_name,
-    stage,
-    metadata
-  ) VALUES (
-    p_activity_id,
-    'stage_transition',
-    CASE p_new_state
-      WHEN 'review_round_1' THEN 'Review Round 1 Started'
-      WHEN 'author_response_1' THEN 'Author Response Period Started'
-      WHEN 'review_round_2' THEN 'Review Round 2 Started'
-      WHEN 'author_response_2' THEN 'Author Response Period 2 Started'
-      WHEN 'assessment' THEN 'Collaborative Assessment Started'
-      WHEN 'awarding' THEN 'Token Awarding Started'
-      WHEN 'submission_choice' THEN 'Submission Choice Available'
-      ELSE 'Activity State: ' || p_new_state
-    END,
-    'Activity progressed to ' || p_new_state || ': ' || p_reason,
-    NULL, -- System-generated event
-    'System',
-    p_new_state,
-    jsonb_build_object(
-      'fromState', p_old_state,
-      'toState', p_new_state,
-      'reason', p_reason
-    )
-  );
-  
-  RETURN TRUE;
+  -- Return true if update worked, false if state mismatch
+  RETURN FOUND;
 END;
 $$ LANGUAGE plpgsql;
 

@@ -154,27 +154,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
--- DEPRECATED: Legacy function - use update_activity_state(activity_id, old_state, new_state, user_id, reason) instead
--- This function is kept for backward compatibility with existing scripts
-CREATE OR REPLACE FUNCTION update_activity_state_legacy(
-  p_activity_id INTEGER,
-  p_new_state public.activity_state,
-  p_reason TEXT DEFAULT 'System transition',
-  p_deadline_days INTEGER DEFAULT NULL
-)
-RETURNS BOOLEAN AS $$
-BEGIN
-  RAISE NOTICE 'DEPRECATED: update_activity_state_legacy() is deprecated. Use update_activity_state() with atomic compare-and-swap instead.';
-  
-  -- Simple state update for backward compatibility
-  UPDATE pr_activities 
-  SET current_state = p_new_state, updated_at = NOW()
-  WHERE activity_id = p_activity_id;
-  
-  RETURN FOUND;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
-
 -- Function to get activities with expired deadlines
 CREATE OR REPLACE FUNCTION get_expired_activities()
 RETURNS TABLE (
@@ -219,5 +198,4 @@ GRANT EXECUTE ON FUNCTION get_active_activities() TO authenticated;
 GRANT EXECUTE ON FUNCTION check_reviewer_team_complete(INTEGER) TO authenticated;
 GRANT EXECUTE ON FUNCTION check_all_reviews_submitted(INTEGER, INTEGER) TO authenticated;
 GRANT EXECUTE ON FUNCTION check_author_response_submitted(INTEGER, INTEGER) TO authenticated;
-GRANT EXECUTE ON FUNCTION update_activity_state_legacy(INTEGER, public.activity_state, TEXT, INTEGER) TO authenticated;
 GRANT EXECUTE ON FUNCTION get_expired_activities() TO authenticated;
