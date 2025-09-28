@@ -109,6 +109,11 @@ CREATE INDEX IF NOT EXISTS idx_pr_reviewer_teams_status ON pr_reviewer_teams (st
 CREATE INDEX IF NOT EXISTS idx_pr_reviewer_teams_commitment_deadline ON pr_reviewer_teams (commitment_deadline);
 CREATE INDEX IF NOT EXISTS idx_pr_reviewer_teams_joined_at ON pr_reviewer_teams (joined_at);
 
+-- Performance optimization index for progression system queries
+CREATE INDEX IF NOT EXISTS idx_pr_reviewer_teams_activity_status 
+ON pr_reviewer_teams(activity_id, status) 
+WHERE status IN ('joined', 'locked_in');
+
 -- Indexes for pr_activity_permissions
 CREATE INDEX IF NOT EXISTS idx_pr_activity_permissions_activity ON pr_activity_permissions(activity_id);
 CREATE INDEX IF NOT EXISTS idx_pr_activity_permissions_user ON pr_activity_permissions(user_id);
@@ -126,16 +131,6 @@ CREATE TRIGGER update_pr_reviewer_teams_updated_at
   BEFORE UPDATE ON pr_reviewer_teams
   FOR EACH ROW
   EXECUTE FUNCTION set_updated_at(); 
-
--- No trigger needed for pr_activity_permissions (no updated_at column)
-
--- Participant creation moved to application services
-
--- Reviewer participant synchronization moved to application services
-
--- State change triggers removed - timeline events will be created in application services
-
-
 
 -- RLS policies for new tables
 ALTER TABLE pr_activity_permissions ENABLE ROW LEVEL SECURITY;

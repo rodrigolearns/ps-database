@@ -154,87 +154,24 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
--- Function to update activity state with logging (improved version)
-CREATE OR REPLACE FUNCTION update_activity_state(
+-- DEPRECATED: Legacy function - use update_activity_state(activity_id, old_state, new_state, user_id, reason) instead
+-- This function is kept for backward compatibility with existing scripts
+CREATE OR REPLACE FUNCTION update_activity_state_legacy(
   p_activity_id INTEGER,
   p_new_state public.activity_state,
   p_reason TEXT DEFAULT 'System transition',
   p_deadline_days INTEGER DEFAULT NULL
 )
 RETURNS BOOLEAN AS $$
-DECLARE
-  v_current_state public.activity_state;
-  v_new_deadline TIMESTAMPTZ;
-  v_rows_updated INTEGER;
 BEGIN
-  -- Get current state
-  SELECT current_state INTO v_current_state
-  FROM pr_activities
-  WHERE activity_id = p_activity_id;
+  RAISE NOTICE 'DEPRECATED: update_activity_state_legacy() is deprecated. Use update_activity_state() with atomic compare-and-swap instead.';
   
-  -- Check if activity exists
-  IF v_current_state IS NULL THEN
-    RAISE NOTICE 'Activity % not found', p_activity_id;
-    RETURN FALSE;
-  END IF;
-  
-  -- Skip if already in target state (prevents duplicates)
-  IF v_current_state = p_new_state THEN
-    RAISE NOTICE 'Activity % already in state %', p_activity_id, p_new_state;
-    RETURN TRUE;
-  END IF;
-  
-  -- Check if this exact transition already exists in the log (additional safety)
-  IF EXISTS (
-    SELECT 1 FROM pr_state_log 
-    WHERE activity_id = p_activity_id 
-    AND old_state = v_current_state 
-    AND new_state = p_new_state
-    AND changed_at > NOW() - INTERVAL '1 minute' -- Within the last minute
-  ) THEN
-    RAISE NOTICE 'Activity % transition from % to % already logged recently', 
-      p_activity_id, v_current_state, p_new_state;
-    RETURN TRUE;
-  END IF;
-  
-  -- Calculate new deadline if specified
-  IF p_deadline_days IS NOT NULL THEN
-    v_new_deadline := NOW() + (p_deadline_days || ' days')::INTERVAL;
-  END IF;
-  
-  -- Update activity state
+  -- Simple state update for backward compatibility
   UPDATE pr_activities 
-  SET 
-    current_state = p_new_state,
-    stage_deadline = v_new_deadline,
-    updated_at = NOW()
+  SET current_state = p_new_state, updated_at = NOW()
   WHERE activity_id = p_activity_id;
   
-  GET DIAGNOSTICS v_rows_updated = ROW_COUNT;
-  
-  -- Log the state change directly
-  INSERT INTO pr_state_log (
-    activity_id,
-    old_state,
-    new_state,
-    reason,
-    changed_at
-  ) VALUES (
-    p_activity_id,
-    v_current_state,
-    p_new_state,
-    p_reason,
-    NOW()
-  );
-  
-  RAISE NOTICE 'Activity % transitioned from % to % (reason: %)', 
-    p_activity_id, v_current_state, p_new_state, p_reason;
-  
-  RETURN v_rows_updated > 0;
-EXCEPTION
-  WHEN OTHERS THEN
-    RAISE NOTICE 'Error updating activity % state: %', p_activity_id, SQLERRM;
-    RETURN FALSE;
+  RETURN FOUND;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
@@ -282,5 +219,5 @@ GRANT EXECUTE ON FUNCTION get_active_activities() TO authenticated;
 GRANT EXECUTE ON FUNCTION check_reviewer_team_complete(INTEGER) TO authenticated;
 GRANT EXECUTE ON FUNCTION check_all_reviews_submitted(INTEGER, INTEGER) TO authenticated;
 GRANT EXECUTE ON FUNCTION check_author_response_submitted(INTEGER, INTEGER) TO authenticated;
-GRANT EXECUTE ON FUNCTION update_activity_state(INTEGER, public.activity_state, TEXT, INTEGER) TO authenticated;
+GRANT EXECUTE ON FUNCTION update_activity_state_legacy(INTEGER, public.activity_state, TEXT, INTEGER) TO authenticated;
 GRANT EXECUTE ON FUNCTION get_expired_activities() TO authenticated;

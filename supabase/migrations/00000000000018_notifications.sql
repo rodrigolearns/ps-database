@@ -1,5 +1,5 @@
 -- =============================================
--- 00000000000017_notifications.sql
+-- 00000000000018_notifications.sql
 -- Notification System for PR Activities
 -- =============================================
 

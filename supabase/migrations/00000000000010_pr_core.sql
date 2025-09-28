@@ -113,24 +113,8 @@ COMMENT ON COLUMN pr_template_ranks.template_id IS 'Foreign key to pr_templates'
 COMMENT ON COLUMN pr_template_ranks.rank_position IS 'Rank position (1st, 2nd, etc.)';
 COMMENT ON COLUMN pr_template_ranks.tokens IS 'Tokens awarded for this rank';
 
--- Stage configuration tables for the abstracted system
-CREATE TABLE IF NOT EXISTS pr_stage_configs (
-  config_id SERIAL PRIMARY KEY,
-  template_id INTEGER REFERENCES pr_templates(template_id),
-  stage_name activity_state NOT NULL,
-  stage_type stage_type NOT NULL,
-  configuration JSONB NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE(template_id, stage_name)
-);
-
-COMMENT ON TABLE pr_stage_configs IS 'Stage configurations for peer review activities';
-COMMENT ON COLUMN pr_stage_configs.config_id IS 'Primary key for the configuration';
-COMMENT ON COLUMN pr_stage_configs.template_id IS 'Associated template (NULL for global configs)';
-COMMENT ON COLUMN pr_stage_configs.stage_name IS 'Name of the stage';
-COMMENT ON COLUMN pr_stage_configs.stage_type IS 'Type of stage behavior';
-COMMENT ON COLUMN pr_stage_configs.configuration IS 'Full JSON configuration for the stage';
+-- Stage configuration removed - logic moved to TypeScript (DEVELOPMENT_PRINCIPLES.md)
+-- All stage behavior is now defined in application layer, not database
 
 -- Peer review activities table
 CREATE TABLE IF NOT EXISTS pr_activities (
@@ -198,34 +182,8 @@ INSERT INTO pr_state_transitions (from_state, to_state) VALUES
   ('submission_choice', 'made_private')
 ON CONFLICT DO NOTHING;
 
--- Stage transition rules table - Database-driven workflow progression rules with timing control
-CREATE TABLE IF NOT EXISTS stage_transition_rules (
-  rule_id SERIAL PRIMARY KEY,
-  from_stage activity_state NOT NULL,
-  to_stage activity_state NOT NULL,
-  condition_type TEXT NOT NULL, -- 'min_reviewers_active', 'all_reviews_submitted', 'author_response_submitted'
-  condition_params JSONB DEFAULT '{}',
-  template_id INTEGER REFERENCES pr_templates(template_id), -- NULL means applies to all templates
-  timing_mode TEXT DEFAULT 'before_action' CHECK (timing_mode IN ('before_action', 'after_action', 'custom')),
-  is_active BOOLEAN DEFAULT true,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW(),
-  CONSTRAINT fk_from_to_valid FOREIGN KEY (from_stage, to_stage) REFERENCES pr_state_transitions(from_state, to_state)
-);
-
-COMMENT ON TABLE stage_transition_rules IS 'Database-driven rules for automatic stage transitions in peer review workflow';
-COMMENT ON COLUMN stage_transition_rules.rule_id IS 'Primary key for the rule';
-COMMENT ON COLUMN stage_transition_rules.from_stage IS 'Stage to transition from';
-COMMENT ON COLUMN stage_transition_rules.to_stage IS 'Stage to transition to';
-COMMENT ON COLUMN stage_transition_rules.condition_type IS 'Type of condition to check (min_reviewers_active, all_reviews_submitted, etc.)';
-COMMENT ON COLUMN stage_transition_rules.condition_params IS 'Parameters for the condition (e.g., {"minCount": 3, "round": 1})';
-COMMENT ON COLUMN stage_transition_rules.template_id IS 'Template this rule applies to (NULL for all templates)';
-COMMENT ON COLUMN stage_transition_rules.timing_mode IS 'When stage transition appears in timeline: before_action (stage first, then user action), after_action (user action first, then stage), custom (special handling)';
-COMMENT ON COLUMN stage_transition_rules.is_active IS 'Whether this rule is currently active';
-
--- Index for efficient rule lookups
-CREATE INDEX IF NOT EXISTS idx_stage_transition_rules_lookup 
-ON stage_transition_rules(from_stage, is_active, template_id);
+-- Stage transition rules removed - logic moved to TypeScript (DEVELOPMENT_PRINCIPLES.md)
+-- All progression rules are now defined in ProgressionRules.ts, not database
 
 -- State change audit log - KEEP for audit trail
 CREATE TABLE IF NOT EXISTS pr_state_log (
@@ -279,14 +237,27 @@ CREATE INDEX IF NOT EXISTS idx_pr_activities_current_state ON pr_activities (cur
 CREATE INDEX IF NOT EXISTS idx_pr_activities_posted_at ON pr_activities (posted_at);
 CREATE INDEX IF NOT EXISTS idx_pr_activities_activity_uuid ON pr_activities (activity_uuid);
 
+-- Add columns for progression tracking if they don't exist
+DO $$ 
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='pr_activities' AND column_name='state_changed_at') THEN
+    ALTER TABLE pr_activities ADD COLUMN state_changed_at TIMESTAMPTZ DEFAULT NOW();
+  END IF;
+  
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='pr_activities' AND column_name='state_changed_by') THEN
+    ALTER TABLE pr_activities ADD COLUMN state_changed_by INTEGER REFERENCES user_accounts(user_id) ON DELETE SET NULL;
+  END IF;
+END $$;
+
+-- Performance indexes for progression system
+CREATE INDEX IF NOT EXISTS idx_pr_activities_state_user ON pr_activities (activity_id, current_state, state_changed_by);
+CREATE INDEX IF NOT EXISTS idx_pr_activities_state_changed ON pr_activities (current_state, state_changed_at);
+
 CREATE INDEX IF NOT EXISTS idx_pr_state_log_activity_id ON pr_state_log (activity_id);
 CREATE INDEX IF NOT EXISTS idx_pr_state_log_changed_at ON pr_state_log (changed_at);
 
--- New indexes for stage configuration system
-CREATE INDEX IF NOT EXISTS idx_pr_stage_configs_template_id ON pr_stage_configs (template_id);
-CREATE INDEX IF NOT EXISTS idx_pr_stage_configs_stage_name ON pr_stage_configs (stage_name);
-CREATE INDEX IF NOT EXISTS idx_pr_stage_data_activity_id ON pr_stage_data (activity_id);
-CREATE INDEX IF NOT EXISTS idx_pr_stage_data_stage_name ON pr_stage_data (stage_name);
+-- Indexes for removed stage configuration system - no longer needed
+-- Stage logic moved to TypeScript (DEVELOPMENT_PRINCIPLES.md)
 
 -- Basic triggers for updated_at fields
 CREATE TRIGGER update_pr_templates_updated_at
@@ -299,15 +270,8 @@ CREATE TRIGGER update_pr_activities_updated_at
   FOR EACH ROW
   EXECUTE FUNCTION set_updated_at();
 
-CREATE TRIGGER update_pr_stage_configs_updated_at
-  BEFORE UPDATE ON pr_stage_configs
-  FOR EACH ROW
-  EXECUTE FUNCTION set_updated_at();
-
-CREATE TRIGGER update_pr_stage_data_updated_at
-  BEFORE UPDATE ON pr_stage_data
-  FOR EACH ROW
-  EXECUTE FUNCTION set_updated_at();
+-- Triggers for removed stage configuration system - no longer needed
+-- Stage logic moved to TypeScript (DEVELOPMENT_PRINCIPLES.md)
 
 -- Seed data for templates
 INSERT INTO pr_templates(name, reviewer_count, review_rounds, total_tokens, extra_tokens)
@@ -502,43 +466,173 @@ CREATE POLICY "Paper creators can remove paper authors"
     );
 
 -- =============================================
--- SEED DATA: Initial Stage Transition Rules  
+-- STAGE TRANSITION RULES REMOVED
 -- =============================================
+-- Following DEVELOPMENT_PRINCIPLES.md: "Database as Source of Truth"
+-- All progression rules are now defined in TypeScript (ProgressionRules.ts)
+-- Database only stores state and configuration, not business logic
 
--- Insert basic stage transition rules with explicit timing control (will be ignored if already exist)
-INSERT INTO stage_transition_rules (from_stage, to_stage, condition_type, condition_params, template_id, timing_mode) 
-VALUES 
-  -- Submitted -> Review Round 1: Exception case - appears immediately when first reviewer submits evaluation
-  ('submitted', 'review_round_1', 'min_reviewers_locked_in', '{"minCount": 1}', NULL, 'before_action'),
-  
-  -- Review Round 1 -> Author Response 1: Exception case - appears AFTER the last review submission for proper timeline order
-  ('review_round_1', 'author_response_1', 'all_reviews_submitted', '{"round": 1}', NULL, 'after_action'),
-  
-  -- Review Round 2 -> Assessment: Standard timing - appears before final review submission  
-  ('review_round_2', 'assessment', 'all_reviews_submitted', '{"round": 2}', NULL, 'before_action'),
-  
-  -- Assessment -> Awarding: Standard timing - appears before assessment finalization
-  ('assessment', 'awarding', 'assessment_finalized', '{}', NULL, 'before_action'),
-  
-  -- Awarding -> Submission Choice: Standard timing - appears after award distribution
-  ('awarding', 'submission_choice', 'awards_distributed', '{}', NULL, 'after_action')
-ON CONFLICT DO NOTHING;
+-- =============================================
+-- SECURITY AUDIT LOG
+-- =============================================
+-- Security audit log for progression system operations
+-- Critical for security monitoring and compliance
 
--- TEMPLATE-SPECIFIC TRANSITION RULES
--- Add template-specific rules for author_response_1 transitions based on review_rounds
-INSERT INTO stage_transition_rules (from_stage, to_stage, condition_type, condition_params, template_id, timing_mode)
-SELECT 
-  'author_response_1',
-  CASE 
-    WHEN pt.review_rounds = 1 THEN 'assessment'::activity_state
-    WHEN pt.review_rounds >= 2 THEN 'review_round_2'::activity_state
-  END,
-  'author_response_submitted',
-  '{"round": 1}',
-  pt.template_id,
-  'after_action'
-FROM pr_templates pt
-WHERE pt.name IN ('1-round,3-reviewers,10-tokens', '2-round,4-reviewers,15-tokens')
-ON CONFLICT DO NOTHING;
+CREATE TABLE IF NOT EXISTS pr_security_audit_log (
+  log_id SERIAL PRIMARY KEY,
+  activity_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
+  user_action TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('SUCCESS', 'SECURITY_FAILURE')),
+  progression_occurred BOOLEAN NOT NULL DEFAULT false,
+  from_state activity_state,
+  to_state activity_state,
+  session_id TEXT,
+  ip_address INET,
+  user_agent TEXT,
+  request_id UUID,
+  error_message TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
-COMMENT ON TABLE stage_transition_rules IS 'Database-driven rules for automatic stage transitions in peer review workflow';
+COMMENT ON TABLE pr_security_audit_log IS 'Security audit trail for progression system operations';
+COMMENT ON COLUMN pr_security_audit_log.log_id IS 'Primary key for the audit log entry';
+COMMENT ON COLUMN pr_security_audit_log.activity_id IS 'PR activity ID (not foreign key to allow logging even if activity deleted)';
+COMMENT ON COLUMN pr_security_audit_log.user_id IS 'User ID who attempted the progression (not foreign key for audit integrity)';
+COMMENT ON COLUMN pr_security_audit_log.user_action IS 'Action that was attempted (e.g., reviewer_locked_in)';
+COMMENT ON COLUMN pr_security_audit_log.status IS 'Result of security validation (SUCCESS or SECURITY_FAILURE)';
+COMMENT ON COLUMN pr_security_audit_log.progression_occurred IS 'Whether progression actually occurred';
+COMMENT ON COLUMN pr_security_audit_log.from_state IS 'Activity state before progression';
+COMMENT ON COLUMN pr_security_audit_log.to_state IS 'Activity state after progression (if successful)';
+COMMENT ON COLUMN pr_security_audit_log.session_id IS 'User session identifier for tracking';
+COMMENT ON COLUMN pr_security_audit_log.ip_address IS 'IP address of the request';
+COMMENT ON COLUMN pr_security_audit_log.user_agent IS 'User agent string from the request';
+COMMENT ON COLUMN pr_security_audit_log.request_id IS 'Unique request identifier for correlation';
+COMMENT ON COLUMN pr_security_audit_log.error_message IS 'Error message if security validation failed';
+COMMENT ON COLUMN pr_security_audit_log.created_at IS 'When the audit log entry was created';
+
+-- Indexes for security monitoring and analysis
+CREATE INDEX IF NOT EXISTS idx_security_audit_activity_id ON pr_security_audit_log (activity_id);
+CREATE INDEX IF NOT EXISTS idx_security_audit_user_id ON pr_security_audit_log (user_id);
+CREATE INDEX IF NOT EXISTS idx_security_audit_status ON pr_security_audit_log (status);
+CREATE INDEX IF NOT EXISTS idx_security_audit_created_at ON pr_security_audit_log (created_at);
+CREATE INDEX IF NOT EXISTS idx_security_audit_user_action ON pr_security_audit_log (user_action);
+
+-- Composite index for security analysis queries
+CREATE INDEX IF NOT EXISTS idx_security_audit_user_status_time 
+ON pr_security_audit_log (user_id, status, created_at);
+
+-- Index for IP-based security monitoring
+CREATE INDEX IF NOT EXISTS idx_security_audit_ip_status_time 
+ON pr_security_audit_log (ip_address, status, created_at) 
+WHERE ip_address IS NOT NULL;
+
+-- =============================================
+-- ATOMIC PROGRESSION TRANSACTION FUNCTION
+-- =============================================
+-- Atomic function for progression operations to prevent race conditions
+-- Following DEVELOPMENT_PRINCIPLES.md: Database as Source of Truth for transactions
+
+CREATE OR REPLACE FUNCTION update_activity_state(
+  p_activity_id INTEGER,
+  p_old_state activity_state,
+  p_new_state activity_state,
+  p_user_id INTEGER,
+  p_reason TEXT
+) RETURNS BOOLEAN AS $$
+DECLARE
+  v_rows_updated INTEGER;
+BEGIN
+  -- Atomic compare-and-swap update to prevent race conditions
+  -- This eliminates the gap between SELECT and UPDATE
+  UPDATE pr_activities 
+  SET current_state = p_new_state,
+      state_changed_at = NOW(),
+      state_changed_by = p_user_id,
+      updated_at = NOW()
+  WHERE activity_id = p_activity_id 
+    AND current_state = p_old_state; -- Atomic condition check
+  
+  GET DIAGNOSTICS v_rows_updated = ROW_COUNT;
+  
+  -- If no rows were updated, the state didn't match
+  IF v_rows_updated = 0 THEN
+    DECLARE
+      v_actual_state activity_state;
+    BEGIN
+      SELECT current_state INTO v_actual_state 
+      FROM pr_activities 
+      WHERE activity_id = p_activity_id;
+      
+      IF v_actual_state IS NULL THEN
+        RAISE EXCEPTION 'Activity % not found', p_activity_id;
+      ELSE
+        RAISE EXCEPTION 'State mismatch: expected %, got %', p_old_state, v_actual_state;
+      END IF;
+    END;
+  END IF;
+  
+  -- Create state audit log entry
+  INSERT INTO pr_state_log (
+    activity_id, 
+    old_state, 
+    new_state, 
+    changed_by, 
+    reason
+  ) VALUES (
+    p_activity_id,
+    p_old_state,
+    p_new_state,
+    p_user_id,
+    p_reason
+  );
+  
+  -- Create timeline event for stage transition
+  INSERT INTO pr_timeline_events (
+    activity_id,
+    event_type,
+    title,
+    description,
+    user_id,
+    user_name,
+    stage,
+    metadata
+  ) VALUES (
+    p_activity_id,
+    'stage_transition',
+    CASE p_new_state
+      WHEN 'review_round_1' THEN 'Review Round 1 Started'
+      WHEN 'author_response_1' THEN 'Author Response Period Started'
+      WHEN 'review_round_2' THEN 'Review Round 2 Started'
+      WHEN 'author_response_2' THEN 'Author Response Period 2 Started'
+      WHEN 'assessment' THEN 'Collaborative Assessment Started'
+      WHEN 'awarding' THEN 'Token Awarding Started'
+      WHEN 'submission_choice' THEN 'Submission Choice Available'
+      ELSE 'Activity State: ' || p_new_state
+    END,
+    'Activity progressed to ' || p_new_state || ': ' || p_reason,
+    NULL, -- System-generated event
+    'System',
+    p_new_state,
+    jsonb_build_object(
+      'fromState', p_old_state,
+      'toState', p_new_state,
+      'reason', p_reason
+    )
+  );
+  
+  RETURN TRUE;
+END;
+$$ LANGUAGE plpgsql;
+
+-- =============================================
+-- PERFORMANCE OPTIMIZATION INDEXES
+-- =============================================
+-- Following DEVELOPMENT_PRINCIPLES.md: Database as Source of Truth for performance
+-- Indexes optimized for progression system queries
+
+-- Partial index for active activities (performance optimization)
+-- This table exists in this migration, so we can create the index here
+CREATE INDEX IF NOT EXISTS idx_pr_activities_active_state 
+ON pr_activities(activity_id, current_state, template_id) 
+WHERE current_state NOT IN ('published_on_ps', 'submitted_externally', 'made_private');

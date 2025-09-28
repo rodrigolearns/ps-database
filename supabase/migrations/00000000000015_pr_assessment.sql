@@ -609,4 +609,9 @@ GRANT EXECUTE ON FUNCTION finalize_assessment_and_check_transition(INTEGER, INTE
 GRANT EXECUTE ON FUNCTION simple_update_activity_state(INTEGER, public.activity_state, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION scheduled_cleanup_assessment_locks() TO authenticated;
 GRANT EXECUTE ON FUNCTION update_reviewer_finalization_conditional(INTEGER, INTEGER, BOOLEAN, INTEGER) TO authenticated;
-GRANT EXECUTE ON FUNCTION reset_all_finalization_statuses(INTEGER, INTEGER, TEXT) TO authenticated; 
+GRANT EXECUTE ON FUNCTION reset_all_finalization_statuses(INTEGER, INTEGER, TEXT) TO authenticated;
+
+-- Performance optimization index for progression system queries
+CREATE INDEX IF NOT EXISTS idx_pr_assessments_activity_finalized 
+ON pr_assessments(activity_id, is_finalized) 
+WHERE is_finalized = true; 

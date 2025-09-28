@@ -65,6 +65,11 @@ CREATE INDEX IF NOT EXISTS idx_pr_author_responses_user_id ON pr_author_response
 CREATE INDEX IF NOT EXISTS idx_pr_author_responses_round ON pr_author_responses (round_number);
 CREATE INDEX IF NOT EXISTS idx_pr_author_responses_submitted_at ON pr_author_responses (submitted_at);
 
+-- Performance optimization index for progression system queries
+CREATE INDEX IF NOT EXISTS idx_pr_author_responses_activity_round 
+ON pr_author_responses(activity_id, round_number, submitted_at) 
+WHERE response_content IS NOT NULL;
+
 -- Triggers for automatic timestamps
 CREATE TRIGGER update_pr_review_submissions_updated_at
   BEFORE UPDATE ON pr_review_submissions
@@ -138,4 +143,4 @@ CREATE POLICY "author_responses_access" ON pr_author_responses
       )
       AND prt.status = 'joined'
     )
-  ); 
+  );
