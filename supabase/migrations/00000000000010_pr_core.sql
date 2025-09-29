@@ -542,10 +542,11 @@ CREATE OR REPLACE FUNCTION update_activity_state(
 ) RETURNS BOOLEAN 
 LANGUAGE plpgsql 
 SECURITY DEFINER
+SET search_path = 'public, pg_catalog'
 AS $$
 BEGIN
   -- Simple atomic update - no overengineering
-  UPDATE pr_activities 
+  UPDATE public.pr_activities 
   SET current_state = p_new_state, updated_at = NOW()
   WHERE activity_id = p_activity_id AND current_state = p_old_state;
   

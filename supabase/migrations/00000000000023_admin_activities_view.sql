@@ -149,10 +149,10 @@ ON admin_activities_view (current_state, posted_at DESC);
 CREATE OR REPLACE FUNCTION refresh_admin_activities_view()
 RETURNS void AS $$
 BEGIN
-  REFRESH MATERIALIZED VIEW CONCURRENTLY admin_activities_view;
+  REFRESH MATERIALIZED VIEW CONCURRENTLY public.admin_activities_view;
   RAISE NOTICE 'Admin activities view refreshed at %', NOW();
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = 'public, pg_catalog';
 
 -- Function to check if view needs refresh (for background refresh)
 CREATE OR REPLACE FUNCTION check_admin_view_staleness()
@@ -164,11 +164,11 @@ DECLARE
 BEGIN
   -- Get latest activity timestamp
   SELECT MAX(GREATEST(posted_at, updated_at, created_at)) INTO last_activity
-  FROM pr_activities;
+  FROM public.pr_activities;
   
   -- Get current counts to detect new activities
-  SELECT COUNT(*) INTO current_view_count FROM admin_activities_view;
-  SELECT COUNT(*) INTO actual_activity_count FROM pr_activities;
+  SELECT COUNT(*) INTO current_view_count FROM public.admin_activities_view;
+  SELECT COUNT(*) INTO actual_activity_count FROM public.pr_activities;
   
   -- Return true if activity count mismatch (indicates new activities)
   RETURN QUERY SELECT 
@@ -176,7 +176,7 @@ BEGIN
     last_activity,
     current_view_count;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = 'public, pg_catalog';
 
 -- Function for manual refresh with detailed response
 CREATE OR REPLACE FUNCTION refresh_admin_activities_view_manual()
@@ -185,10 +185,10 @@ DECLARE
   activity_count INTEGER;
 BEGIN
   BEGIN
-    REFRESH MATERIALIZED VIEW CONCURRENTLY admin_activities_view;
+    REFRESH MATERIALIZED VIEW CONCURRENTLY public.admin_activities_view;
     
     -- Get count after refresh
-    SELECT COUNT(*) INTO activity_count FROM admin_activities_view;
+    SELECT COUNT(*) INTO activity_count FROM public.admin_activities_view;
     
     RETURN QUERY SELECT 
       TRUE as success, 
@@ -204,7 +204,7 @@ BEGIN
       0 as activities_count;
   END;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = 'public, pg_catalog';
 
 -- Grant permissions
 GRANT SELECT ON admin_activities_view TO authenticated;
