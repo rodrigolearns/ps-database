@@ -8,6 +8,13 @@ DROP POLICY IF EXISTS "review_submissions_access" ON pr_review_submissions;
 CREATE POLICY "review_submissions_simple" ON pr_review_submissions
   FOR ALL TO authenticated
   USING (
+    -- Admin and superadmin users can see all content
+    EXISTS (
+      SELECT 1 FROM user_accounts ua
+      WHERE ua.auth_id = auth.uid()
+      AND ua.role IN ('admin', 'superadmin')
+    )
+    OR
     -- You can only access reviews if you're a reviewer in this activity
     EXISTS (
       SELECT 1 FROM pr_reviewer_teams prt
@@ -47,6 +54,13 @@ CREATE POLICY "author_responses_access" ON pr_author_responses
   FOR ALL
   TO authenticated
   USING (
+    -- Admin and superadmin users can see all content
+    EXISTS (
+      SELECT 1 FROM user_accounts ua
+      WHERE ua.auth_id = auth.uid()
+      AND ua.role IN ('admin', 'superadmin')
+    )
+    OR
     -- Anyone can access author responses for published activities
     EXISTS (
       SELECT 1 FROM pr_activities pa
@@ -78,6 +92,13 @@ CREATE POLICY "assessment_participant_access" ON pr_assessments
   FOR ALL
   TO authenticated
   USING (
+    -- Admin and superadmin users can see all content
+    EXISTS (
+      SELECT 1 FROM user_accounts ua
+      WHERE ua.auth_id = auth.uid()
+      AND ua.role IN ('admin', 'superadmin')
+    )
+    OR
     -- Anyone can access assessments for published activities
     EXISTS (
       SELECT 1 FROM pr_activities pa
@@ -109,12 +130,12 @@ CREATE POLICY "assessment_participant_access" ON pr_assessments
     )
   );
 
--- Add comments explaining the new public access rules
+-- Add comments explaining the access rules
 COMMENT ON POLICY "review_submissions_simple" ON pr_review_submissions IS 
-'Simple RLS: Only reviewers in activity can write reviews under their own name during review stages';
+'Admin bypass + Simple RLS: Admins see all content, reviewers in activity can write reviews under their own name during review stages';
 
 COMMENT ON POLICY "author_responses_access" ON pr_author_responses IS 
-'Allows participant access during review and public access after publication';
+'Admin bypass + participant access during review and public access after publication';
 
 COMMENT ON POLICY "assessment_participant_access" ON pr_assessments IS 
-'Allows participant access during review and public access after publication';
+'Admin bypass + participant access during review and public access after publication';
