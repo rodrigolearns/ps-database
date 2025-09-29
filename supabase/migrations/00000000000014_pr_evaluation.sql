@@ -74,6 +74,26 @@ CREATE INDEX IF NOT EXISTS idx_pr_author_responses_activity_round
 ON pr_author_responses(activity_id, round_number, submitted_at) 
 WHERE response_content IS NOT NULL;
 
+-- =============================================
+-- PERFORMANCE OPTIMIZATION INDEXES - PR Activity Page
+-- =============================================
+-- Following DEVELOPMENT_PRINCIPLES.md: Database as Source of Truth for performance
+-- Indexes optimized for the main PR activity data loading JOIN operations
+
+-- Covering index for review submissions JOIN optimization (avoids table lookup)
+CREATE INDEX IF NOT EXISTS idx_pr_review_submissions_activity_reviewer_covering
+ON pr_review_submissions (activity_id, reviewer_id)
+INCLUDE (round_number, submitted_at, is_initial_assessment, submission_id, review_content);
+
+-- Covering index for author responses JOIN optimization (avoids table lookup) 
+CREATE INDEX IF NOT EXISTS idx_pr_author_responses_activity_round_covering
+ON pr_author_responses (activity_id, round_number)
+INCLUDE (response_id, user_id, submitted_at, response_content, cover_letter, paper_version_id);
+
+-- Optimized index for review submissions ordering (most common query pattern)
+CREATE INDEX IF NOT EXISTS idx_pr_review_submissions_activity_round_submitted
+ON pr_review_submissions (activity_id, round_number ASC, submitted_at ASC);
+
 -- Triggers for automatic timestamps
 CREATE TRIGGER update_pr_review_submissions_updated_at
   BEFORE UPDATE ON pr_review_submissions

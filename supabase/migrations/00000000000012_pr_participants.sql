@@ -114,6 +114,26 @@ CREATE INDEX IF NOT EXISTS idx_pr_reviewer_teams_activity_status
 ON pr_reviewer_teams(activity_id, status) 
 WHERE status IN ('joined', 'locked_in');
 
+-- =============================================
+-- PERFORMANCE OPTIMIZATION INDEXES - PR Activity Page
+-- =============================================
+-- Following DEVELOPMENT_PRINCIPLES.md: Database as Source of Truth for performance
+-- Indexes optimized for the main PR activity data loading JOIN operations
+
+-- Covering index for reviewer teams JOIN optimization (avoids table lookup)
+CREATE INDEX IF NOT EXISTS idx_pr_reviewer_teams_activity_user_covering
+ON pr_reviewer_teams (activity_id, user_id)
+INCLUDE (status, joined_at, locked_in_at, team_id, commitment_deadline, removed_at, removal_reason);
+
+-- Covering index for timeline events JOIN optimization (avoids table lookup)
+CREATE INDEX IF NOT EXISTS idx_pr_timeline_events_activity_type_covering
+ON pr_timeline_events (activity_id, event_type)
+INCLUDE (created_at, user_id, title, stage, description, metadata, user_name, event_id);
+
+-- Optimized index for timeline events ordering (most common query pattern)
+CREATE INDEX IF NOT EXISTS idx_pr_timeline_events_activity_created_desc
+ON pr_timeline_events (activity_id, created_at DESC);
+
 -- Indexes for pr_activity_permissions
 CREATE INDEX IF NOT EXISTS idx_pr_activity_permissions_activity ON pr_activity_permissions(activity_id);
 CREATE INDEX IF NOT EXISTS idx_pr_activity_permissions_user ON pr_activity_permissions(user_id);

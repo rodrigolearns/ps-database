@@ -30,19 +30,15 @@ print_error() {
     echo -e "${RED}❌ $1${NC}"
 }
 
-# Function to generate types for both apps
+# Function to generate types for paperstacks app
 generate_all_types() {
-    print_info "Generating TypeScript types for all apps..."
+    print_info "Generating TypeScript types for paperstacks app..."
     
-    # Generate types for main paperstacks app
+    # Generate types for main paperstacks app only
     print_info "→ Generating types for paperstacks app..."
     supabase gen types typescript --local > ../paperstacks/src/types/supabase.ts
     
-    # Generate types for paperstacks.pub app
-    print_info "→ Generating types for paperstacks.pub app..."
-    supabase gen types typescript --local > ../paperstacks.pub/src/types/supabase.ts
-    
-    print_status "Types generated successfully for both apps"
+    print_status "Types generated successfully for paperstacks app"
 }
 
 # Function to reset local database and regenerate types
@@ -97,7 +93,7 @@ show_help() {
     echo "Commands:"
     echo "  reset     Reset local database and regenerate types"
     echo "  push      Push migrations to remote and regenerate types"
-    echo "  types     Generate TypeScript types for both apps"
+    echo "  types     Generate TypeScript types for paperstacks app"
     echo "  watch     Watch for migration changes and auto-regenerate types"
     echo "  help      Show this help message"
     echo ""

@@ -81,6 +81,18 @@ CREATE INDEX IF NOT EXISTS idx_user_accounts_username ON user_accounts (username
 CREATE INDEX IF NOT EXISTS idx_user_accounts_search ON user_accounts USING GIN (search_vector);
 CREATE INDEX IF NOT EXISTS idx_user_preferences_user_id ON user_preferences (user_id);
 
+-- =============================================
+-- PERFORMANCE OPTIMIZATION INDEXES - PR Activity Page
+-- =============================================
+-- Following DEVELOPMENT_PRINCIPLES.md: Database as Source of Truth for performance
+-- Indexes optimized for the main PR activity data loading JOIN operations
+
+-- Covering index for user account lookups (most frequently joined table)
+-- This avoids table lookup for the most common user account fields needed in JOINs
+CREATE INDEX IF NOT EXISTS idx_user_accounts_covering_basic
+ON user_accounts (user_id)
+INCLUDE (username, full_name, profile_image_url, auth_id, email);
+
 -- Triggers
 CREATE TRIGGER update_user_accounts_updated_at
   BEFORE UPDATE ON user_accounts

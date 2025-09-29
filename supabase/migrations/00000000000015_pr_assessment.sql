@@ -532,4 +532,20 @@ GRANT EXECUTE ON FUNCTION reset_all_finalization_statuses(INTEGER, INTEGER, TEXT
 -- Performance optimization index for progression system queries
 CREATE INDEX IF NOT EXISTS idx_pr_assessments_activity_finalized 
 ON pr_assessments(activity_id, is_finalized) 
-WHERE is_finalized = true; 
+WHERE is_finalized = true;
+
+-- =============================================
+-- PERFORMANCE OPTIMIZATION INDEXES - PR Activity Page
+-- =============================================
+-- Following DEVELOPMENT_PRINCIPLES.md: Database as Source of Truth for performance
+-- Indexes optimized for the main PR activity data loading JOIN operations
+
+-- Covering index for assessments JOIN optimization (avoids table lookup)
+CREATE INDEX IF NOT EXISTS idx_pr_assessments_activity_covering
+ON pr_assessments (activity_id)
+INCLUDE (assessment_id, assessment_content, is_finalized, finalized_at, current_editor_id, updated_at, created_at);
+
+-- Covering index for finalization status JOIN optimization (avoids table lookup)
+CREATE INDEX IF NOT EXISTS idx_pr_finalization_status_activity_covering
+ON pr_finalization_status (activity_id)
+INCLUDE (status_id, reviewer_id, is_finalized, finalized_at, created_at, updated_at); 

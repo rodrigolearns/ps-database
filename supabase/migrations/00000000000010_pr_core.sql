@@ -566,3 +566,18 @@ $$;
 CREATE INDEX IF NOT EXISTS idx_pr_activities_active_state 
 ON pr_activities(activity_id, current_state, template_id) 
 WHERE current_state NOT IN ('published_on_ps', 'submitted_externally', 'made_private');
+
+-- =============================================
+-- PERFORMANCE OPTIMIZATION INDEXES - PR Activity Page
+-- =============================================
+-- Following DEVELOPMENT_PRINCIPLES.md: Database as Source of Truth for performance
+-- Indexes optimized for the main PR activity data loading query
+
+-- Composite index for main activity query with related data lookup
+CREATE INDEX IF NOT EXISTS idx_pr_activities_comprehensive_lookup 
+ON pr_activities (activity_id, paper_id, template_id, creator_id, current_state);
+
+-- Covering index for activity basic info (avoids table lookup for common fields)
+CREATE INDEX IF NOT EXISTS idx_pr_activities_basic_info_covering 
+ON pr_activities (activity_id) 
+INCLUDE (current_state, stage_deadline, posted_at, escrow_balance, activity_uuid, created_at, updated_at);

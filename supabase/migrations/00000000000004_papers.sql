@@ -146,6 +146,22 @@ CREATE INDEX IF NOT EXISTS idx_paper_contributors_corresponding ON paper_contrib
 CREATE INDEX IF NOT EXISTS idx_paper_contributors_symbols ON paper_contributors USING GIN (contribution_symbols);
 CREATE INDEX IF NOT EXISTS idx_paper_contributors_external_email ON paper_contributors (external_email);
 
+-- =============================================
+-- PERFORMANCE OPTIMIZATION INDEXES - PR Activity Page
+-- =============================================
+-- Following DEVELOPMENT_PRINCIPLES.md: Database as Source of Truth for performance
+-- Indexes optimized for the main PR activity data loading JOIN operations
+
+-- Covering index for paper contributors JOIN optimization (avoids table lookup)
+CREATE INDEX IF NOT EXISTS idx_paper_contributors_paper_user_covering 
+ON paper_contributors (paper_id, user_id) 
+INCLUDE (is_corresponding, contributor_order, external_name, external_email, external_orcid, external_affiliations, contribution_symbols, contributor_id);
+
+-- Covering index for paper versions JOIN optimization (avoids table lookup)
+CREATE INDEX IF NOT EXISTS idx_paper_versions_paper_covering
+ON paper_versions (paper_id)
+INCLUDE (version_id, version_number, file_reference, sha, created_at);
+
 -- Constraint: Each paper must have exactly one corresponding author
 CREATE UNIQUE INDEX IF NOT EXISTS idx_paper_contributors_one_corresponding 
   ON paper_contributors (paper_id) 
