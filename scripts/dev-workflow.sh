@@ -48,6 +48,15 @@ reset_and_sync() {
     supabase db reset
     generate_all_types
     
+    # Restart Etherpad to clear its cache and sync with fresh database
+    print_info "Restarting Etherpad container to sync with database reset..."
+    if docker ps --format '{{.Names}}' | grep -q "paperstacks_etherpad"; then
+        docker restart paperstacks_etherpad > /dev/null 2>&1 || true
+        print_status "Etherpad container restarted"
+    else
+        print_warning "Etherpad container not found - it may need to be started with 'npm run dev' in paperstacks/"
+    fi
+    
     print_status "Database reset and types synced"
 }
 

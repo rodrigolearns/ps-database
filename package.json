@@ -9,15 +9,15 @@
     "generate:types": "supabase gen types typescript --local > ../paperstacks/src/types/supabase.ts",
     "generate:types:all": "npm run generate:types && npm run generate:types:pub",
     "generate:types:pub": "supabase gen types typescript --local > ../paperstacks.pub/src/types/supabase.ts",
-    "dev:sync": "npm run migrate:local && npm run generate:types:all",
-    "dev:push": "npm run migrate && npm run generate:types:all",
+    "dev:sync": "npm run migrate:local && npm run generate:types",
+    "dev:push": "npm run migrate && npm run generate:types",
     "capture": "./scripts/capture-changes.sh",
     "diff": "supabase db diff --use-migra --schema public,auth,storage",
     "diff:file": "supabase db diff --use-migra --schema public,auth,storage > schema-diff-$(date +%Y%m%d-%H%M%S).sql",
     "schema:dump": "supabase db dump --data-only=false --schema-only=true --file=schema-dump-$(date +%Y%m%d-%H%M%S).sql",
     "validate": "supabase db lint",
     "status": "supabase status",
-    "watch": "npm run dev:sync && echo '\n🔄 Watching for schema changes...\n' && fswatch -o supabase/migrations/ | while read; do echo '📝 Schema change detected, regenerating types...' && npm run generate:types:all; done"
+    "watch": "npm run dev:sync && echo '\n🔄 Watching for schema changes...\n' && fswatch -o supabase/migrations/ | while read; do echo '📝 Schema change detected, regenerating types...' && npm run generate:types; done"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0"
