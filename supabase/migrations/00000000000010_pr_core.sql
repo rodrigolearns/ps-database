@@ -546,8 +546,12 @@ SET search_path = 'public, pg_catalog'
 AS $$
 BEGIN
   -- Simple atomic update - no overengineering
+  -- Set stage_transition_at to track when new stage began (for deadline calculation)
   UPDATE public.pr_activities 
-  SET current_state = p_new_state, updated_at = NOW()
+  SET 
+    current_state = p_new_state, 
+    stage_transition_at = NOW(),
+    updated_at = NOW()
   WHERE activity_id = p_activity_id AND current_state = p_old_state;
   
   -- Return true if update worked, false if state mismatch

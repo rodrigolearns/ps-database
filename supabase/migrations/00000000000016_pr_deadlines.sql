@@ -3,6 +3,15 @@
 -- Template-Driven Deadline System
 -- =============================================
 
+-- Add stage_transition_at column to track when current stage began
+ALTER TABLE pr_activities 
+ADD COLUMN IF NOT EXISTS stage_transition_at TIMESTAMPTZ;
+
+COMMENT ON COLUMN pr_activities.stage_transition_at IS 'When the current stage began (for deadline calculation)';
+
+-- Create index for deadline queries
+CREATE INDEX IF NOT EXISTS idx_pr_activities_stage_transition ON pr_activities(stage_transition_at) WHERE stage_transition_at IS NOT NULL;
+
 -- Deadline configuration table
 CREATE TABLE IF NOT EXISTS pr_deadlines (
   deadline_id SERIAL PRIMARY KEY,
@@ -35,6 +44,11 @@ CREATE TRIGGER update_pr_deadlines_updated_at
   EXECUTE FUNCTION set_updated_at();
 
 -- Seed deadline data for existing templates
+-- Deadline requirements:
+-- - Review stages: 72 hours (3 days) from reviewer joining
+-- - Author response stages: 14 days from all reviews submitted
+-- - Assessment: 72 hours (3 days) from stage start
+-- - Awarding: 72 hours (3 days) from stage start
 INSERT INTO pr_deadlines (template_id, state_name, deadline_days, warning_days)
 SELECT 
   t.template_id,
@@ -44,10 +58,13 @@ SELECT
 FROM pr_templates t
 CROSS JOIN (
   VALUES 
-    ('review_round_1', 28),
-    ('review_round_2', 28),
-    ('assessment', 14),
-    ('awarding', 7)
+    ('submitted', 3),           -- 72 hours for initial review
+    ('review_round_1', 3),      -- 72 hours for round 1
+    ('author_response_1', 14),  -- 14 days for author response
+    ('review_round_2', 14),     -- 14 days for round 2 (from author response 1)
+    ('author_response_2', 14),  -- 14 days for final author response
+    ('assessment', 3),          -- 72 hours for collaborative assessment
+    ('awarding', 3)             -- 72 hours for award distribution
 ) AS d(state_name, deadline_days)
 ON CONFLICT (template_id, state_name) DO UPDATE
   SET deadline_days = EXCLUDED.deadline_days,
@@ -132,8 +149,9 @@ DECLARE
   v_new_deadline TIMESTAMPTZ;
 BEGIN
   -- Get template ID for this activity
+  -- Explicitly qualify with public schema since search_path is empty
   SELECT template_id INTO v_template_id
-  FROM pr_activities
+  FROM public.pr_activities
   WHERE activity_id = p_activity_id;
   
   IF v_template_id IS NULL THEN
@@ -142,13 +160,13 @@ BEGIN
   
   -- Get deadline days for this state and template
   SELECT deadline_days INTO v_deadline_days
-  FROM pr_deadlines
+  FROM public.pr_deadlines
   WHERE template_id = v_template_id
     AND state_name = p_state;
   
   -- If no deadline configuration exists, don't set deadline
   IF v_deadline_days IS NULL THEN
-    UPDATE pr_activities
+    UPDATE public.pr_activities
     SET stage_deadline = NULL
     WHERE activity_id = p_activity_id;
     RETURN TRUE;
@@ -158,7 +176,7 @@ BEGIN
   v_new_deadline := NOW() + (v_deadline_days || ' days')::INTERVAL;
   
   -- Update activity deadline
-  UPDATE pr_activities
+  UPDATE public.pr_activities
   SET stage_deadline = v_new_deadline
   WHERE activity_id = p_activity_id;
   

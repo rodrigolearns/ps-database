@@ -26,6 +26,9 @@
 -- - DEVELOPMENT_PRINCIPLES.md
 -- =====================================================
 
+-- Enable pgcrypto extension for digest() function (used for SHA-256 content hashing)
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 -- =====================================================
 -- PART 1: ETHERPAD DATABASE SCHEMA
 -- =====================================================
@@ -110,26 +113,26 @@ BEGIN
   -- Count total reviewers for this activity
   SELECT COUNT(*)
   INTO v_total_reviewers
-  FROM pr_reviewer_teams
+  FROM public.pr_reviewer_teams
   WHERE activity_id = p_activity_id
   AND status IN ('joined', 'locked_in');
   
   -- Count reviewers who have finalized
   SELECT COUNT(*)
   INTO v_finalized_reviewers
-  FROM pr_finalization_status
+  FROM public.pr_finalization_status
   WHERE activity_id = p_activity_id
   AND is_finalized = true;
   
   -- Get current content hash
   SELECT last_content_hash
   INTO v_last_content_hash
-  FROM pr_assessments
+  FROM public.pr_assessments
   WHERE activity_id = p_activity_id;
   
   -- Check if all finalized reviewers have same content hash
   SELECT NOT EXISTS (
-    SELECT 1 FROM pr_finalization_status
+    SELECT 1 FROM public.pr_finalization_status
     WHERE activity_id = p_activity_id
     AND is_finalized = true
     AND (content_hash_at_finalization IS NULL OR content_hash_at_finalization != v_last_content_hash)
@@ -148,6 +151,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 COMMENT ON FUNCTION check_assessment_ready_for_completion(INTEGER) IS 'Check if assessment is ready to complete (all finalized + no content changes)';
 
 -- Function to update reviewer finalization status with content hash
+-- Following DEVELOPMENT_PRINCIPLES.md: Explicit schema qualification (Database is Source of Truth)
 CREATE OR REPLACE FUNCTION toggle_reviewer_finalization(
   p_activity_id INTEGER,
   p_reviewer_id INTEGER,
@@ -159,9 +163,9 @@ DECLARE
   v_current_content_hash TEXT;
   v_is_reviewer BOOLEAN;
 BEGIN
-  -- Get current state
+  -- Get current state (explicitly qualify table with public schema)
   SELECT current_state INTO v_current_state
-  FROM pr_activities
+  FROM public.pr_activities
   WHERE activity_id = p_activity_id;
   
   IF NOT FOUND THEN
@@ -180,7 +184,7 @@ BEGIN
   
   -- Verify user is a reviewer
   SELECT EXISTS (
-    SELECT 1 FROM pr_reviewer_teams 
+    SELECT 1 FROM public.pr_reviewer_teams 
     WHERE activity_id = p_activity_id 
     AND user_id = p_reviewer_id
     AND status IN ('joined', 'locked_in')
@@ -195,11 +199,11 @@ BEGIN
   
   -- Get current content hash
   SELECT last_content_hash INTO v_current_content_hash
-  FROM pr_assessments
+  FROM public.pr_assessments
   WHERE activity_id = p_activity_id;
   
   -- Update finalization status
-  INSERT INTO pr_finalization_status (
+  INSERT INTO public.pr_finalization_status (
     activity_id, 
     reviewer_id, 
     is_finalized, 
@@ -239,7 +243,7 @@ DECLARE
   v_reset_count INTEGER;
 BEGIN
   -- Reset all finalization statuses
-  UPDATE pr_finalization_status
+  UPDATE public.pr_finalization_status
   SET 
     is_finalized = false,
     finalized_at = NULL,
@@ -292,12 +296,14 @@ DECLARE
 BEGIN
   -- Insert or update assessment record
   -- Explicitly qualify table with public schema (search_path is empty for security)
+  -- Initialize last_content_hash with SHA-256 hash of empty string for proper finalization tracking
   INSERT INTO public.pr_assessments (
     activity_id,
     etherpad_pad_id,
     etherpad_group_id,
     timeslider_url,
     assessment_content,
+    last_content_hash,
     is_finalized,
     created_at,
     updated_at
@@ -308,6 +314,7 @@ BEGIN
     NULL,  -- Regular pads don't use groups
     p_timeslider_url,
     '',    -- Empty initial content
+    encode(extensions.digest('', 'sha256'), 'hex'),  -- Hash of empty string
     false,
     NOW(),
     NOW()
@@ -316,6 +323,7 @@ BEGIN
     etherpad_pad_id = p_etherpad_pad_id,
     etherpad_group_id = NULL,
     timeslider_url = p_timeslider_url,
+    last_content_hash = encode(extensions.digest('', 'sha256'), 'hex'),  -- Reset hash on pad recreation
     updated_at = NOW()
   RETURNING assessment_id INTO v_assessment_id;
   
