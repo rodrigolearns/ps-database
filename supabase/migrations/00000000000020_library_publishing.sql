@@ -4,7 +4,7 @@
 -- =====================================================
 
 -- NOTE: The activity_state enum values have already been updated in 00000000000010_pr_core.sql
--- New states: submission_choice, published_on_ps, submitted_externally, made_private
+-- New states: publication_choice, published_on_ps, submitted_externally, made_private
 
 -- Add columns to pr_activities table for publishing
 ALTER TABLE pr_activities 
@@ -72,7 +72,7 @@ BEGIN
     journal_choice = 'paperstacks-library',
     state_change_reason = 'Published to PaperStacks Library'
   WHERE activity_id = p_activity_id 
-    AND current_state = 'submission_choice';
+    AND current_state = 'publication_choice';
   
   -- Return true if activity was updated
   RETURN FOUND;
@@ -96,7 +96,7 @@ BEGIN
     journal_choice = 'external-journal',
     state_change_reason = 'Submitted to external journal: ' || p_journal_name
   WHERE activity_id = p_activity_id 
-    AND current_state = 'submission_choice';
+    AND current_state = 'publication_choice';
   
   IF FOUND THEN
     -- Create external submission record
@@ -124,7 +124,7 @@ BEGIN
     journal_choice = 'private',
     state_change_reason = 'Activity made private by author'
   WHERE activity_id = p_activity_id 
-    AND current_state = 'submission_choice';
+    AND current_state = 'publication_choice';
   
   -- Return true if activity was updated
   RETURN FOUND;
@@ -133,8 +133,8 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 COMMENT ON FUNCTION make_activity_private(INTEGER) IS 'Makes a peer review activity private (not published anywhere)';
 
--- Function to set journal selection choice (generic handler)
-CREATE OR REPLACE FUNCTION set_submission_choice(
+-- Function to set publication choice (generic handler)
+CREATE OR REPLACE FUNCTION set_publication_choice(
   p_activity_id INTEGER,
   p_choice TEXT
 ) RETURNS BOOLEAN AS $$
@@ -150,23 +150,23 @@ BEGIN
       UPDATE pr_activities
       SET 
         journal_choice = p_choice,
-        state_change_reason = 'Journal selection set to: ' || p_choice
+        state_change_reason = 'Publication choice set to: ' || p_choice
       WHERE activity_id = p_activity_id 
-        AND current_state = 'submission_choice';
+        AND current_state = 'publication_choice';
       
       RETURN FOUND;
   END CASE;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
-COMMENT ON FUNCTION set_submission_choice(INTEGER, TEXT) IS 'Sets the submission choice for a peer review activity';
+COMMENT ON FUNCTION set_publication_choice(INTEGER, TEXT) IS 'Sets the publication choice for a peer review activity (paperstacks-library, external-journal, or private)';
 
 -- Grant necessary permissions
 GRANT EXECUTE ON FUNCTION publish_to_paperstacks_library(INTEGER) TO authenticated;
 GRANT EXECUTE ON FUNCTION submit_to_external_journal(INTEGER, TEXT, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION make_activity_private(INTEGER) TO authenticated;
-GRANT EXECUTE ON FUNCTION set_submission_choice(INTEGER, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION set_publication_choice(INTEGER, TEXT) TO authenticated;
 
 -- Add comments to new columns
-COMMENT ON COLUMN pr_activities.completion_status IS 'Final completion status of the activity after submission choice';
+COMMENT ON COLUMN pr_activities.completion_status IS 'Final completion status of the activity after publication choice';
 COMMENT ON TABLE external_journal_submissions IS 'Tracks submissions to external journals separate from activity state';

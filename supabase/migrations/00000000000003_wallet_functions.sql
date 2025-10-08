@@ -10,7 +10,7 @@ DECLARE
   v_balance INTEGER;
 BEGIN
   SELECT balance INTO v_balance
-  FROM wallet_balances
+  FROM public.wallet_balances
   WHERE user_id = p_user_id;
   
   RETURN COALESCE(v_balance, 0);
@@ -32,7 +32,7 @@ DECLARE
 BEGIN
   -- Get ACTUAL caller's user_id from auth context
   SELECT user_id INTO v_caller_user_id 
-  FROM user_accounts 
+  FROM public.user_accounts 
   WHERE auth_id = auth.uid();
   
   IF v_caller_user_id IS NULL THEN
@@ -44,7 +44,7 @@ BEGIN
   
   -- Verify the ACTUAL caller is superadmin
   SELECT (role = 'superadmin') INTO v_is_superadmin
-  FROM user_accounts
+  FROM public.user_accounts
   WHERE user_id = v_caller_user_id;
   
   IF NOT v_is_superadmin THEN
@@ -61,7 +61,7 @@ BEGIN
     );
   END IF;
   
-  INSERT INTO wallet_transactions (
+  INSERT INTO public.wallet_transactions (
     user_id,
     amount,
     transaction_type,
@@ -82,7 +82,7 @@ BEGIN
     'message', 'Tokens added successfully',
     'amount', p_amount,
     'user_id', p_target_user_id,
-    'new_balance', get_user_wallet_balance(p_target_user_id)
+    'new_balance', public.get_user_wallet_balance(p_target_user_id)
   );
 EXCEPTION
   WHEN OTHERS THEN
@@ -109,7 +109,7 @@ DECLARE
 BEGIN
   -- Get ACTUAL caller's user_id from auth context
   SELECT user_id INTO v_caller_user_id 
-  FROM user_accounts 
+  FROM public.user_accounts 
   WHERE auth_id = auth.uid();
   
   IF v_caller_user_id IS NULL THEN
@@ -121,7 +121,7 @@ BEGIN
   
   -- Verify the ACTUAL caller is superadmin
   SELECT (role = 'superadmin') INTO v_is_superadmin
-  FROM user_accounts
+  FROM public.user_accounts
   WHERE user_id = v_caller_user_id;
   
   IF NOT v_is_superadmin THEN
@@ -140,7 +140,7 @@ BEGIN
   
   -- Check if user has sufficient balance
   SELECT balance INTO v_balance 
-  FROM wallet_balances
+  FROM public.wallet_balances
   WHERE user_id = p_target_user_id;
   
   IF COALESCE(v_balance, 0) < p_amount THEN
@@ -150,7 +150,7 @@ BEGIN
     );
   END IF;
   
-  INSERT INTO wallet_transactions (
+  INSERT INTO public.wallet_transactions (
     user_id,
     amount,
     transaction_type,
@@ -171,7 +171,7 @@ BEGIN
     'message', 'Tokens deducted successfully',
     'amount', p_amount,
     'user_id', p_target_user_id,
-    'new_balance', get_user_wallet_balance(p_target_user_id)
+    'new_balance', public.get_user_wallet_balance(p_target_user_id)
   );
 EXCEPTION
   WHEN OTHERS THEN
@@ -194,7 +194,7 @@ DECLARE
   v_balance INTEGER;
 BEGIN
   SELECT balance INTO v_balance 
-  FROM wallet_balances
+  FROM public.wallet_balances
   WHERE user_id = p_user_id;
   
   RETURN COALESCE(v_balance, 0) >= p_amount;
@@ -220,7 +220,7 @@ BEGIN
     );
   END IF;
   
-  INSERT INTO wallet_transactions (
+  INSERT INTO public.wallet_transactions (
     user_id,
     amount,
     transaction_type,
@@ -243,7 +243,7 @@ BEGIN
     'message', 'Tokens rewarded successfully',
     'amount', p_amount,
     'user_id', p_user_id,
-    'new_balance', get_user_wallet_balance(p_user_id)
+    'new_balance', public.get_user_wallet_balance(p_user_id)
   );
 EXCEPTION
   WHEN OTHERS THEN
@@ -277,7 +277,7 @@ BEGIN
   
   -- Check if user has sufficient balance
   SELECT balance INTO v_balance 
-  FROM wallet_balances
+  FROM public.wallet_balances
   WHERE user_id = p_user_id;
   
   IF COALESCE(v_balance, 0) < p_amount THEN
@@ -287,7 +287,7 @@ BEGIN
     );
   END IF;
   
-  INSERT INTO wallet_transactions (
+  INSERT INTO public.wallet_transactions (
     user_id,
     amount,
     transaction_type,
@@ -310,7 +310,7 @@ BEGIN
     'message', 'Tokens deducted successfully',
     'amount', p_amount,
     'user_id', p_user_id,
-    'new_balance', get_user_wallet_balance(p_user_id)
+    'new_balance', public.get_user_wallet_balance(p_user_id)
   );
 EXCEPTION
   WHEN OTHERS THEN
@@ -344,7 +344,7 @@ BEGIN
   
   -- Get and lock escrow balance
   SELECT escrow_balance, activity_uuid INTO v_escrow_balance, v_activity_uuid
-  FROM pr_activities 
+  FROM public.pr_activities 
   WHERE activity_id = p_activity_id
   FOR UPDATE;
   
@@ -363,13 +363,13 @@ BEGIN
   END IF;
   
   -- Transfer tokens: decrease escrow, increase user wallet
-  UPDATE pr_activities
+  UPDATE public.pr_activities
   SET escrow_balance = escrow_balance - p_amount,
       updated_at = NOW()
   WHERE activity_id = p_activity_id;
   
   -- Credit tokens to user wallet
-  INSERT INTO wallet_transactions (
+  INSERT INTO public.wallet_transactions (
     user_id,
     amount,
     transaction_type,
@@ -393,7 +393,7 @@ BEGIN
     'amount', p_amount,
     'user_id', p_user_id,
     'activity_id', p_activity_id,
-    'new_user_balance', get_user_wallet_balance(p_user_id),
+    'new_user_balance', public.get_user_wallet_balance(p_user_id),
     'new_escrow_balance', v_escrow_balance - p_amount
   );
 EXCEPTION
@@ -415,32 +415,20 @@ CREATE OR REPLACE FUNCTION transfer_escrow_to_superadmin(
 )
 RETURNS JSONB AS $$
 DECLARE
-  v_caller_user_id INTEGER;
+  v_superadmin_id INTEGER;
   v_escrow_balance INTEGER;
   v_activity_uuid UUID;
-  v_is_superadmin BOOLEAN;
 BEGIN
-  -- Get ACTUAL caller's user_id from auth context
-  SELECT user_id INTO v_caller_user_id 
-  FROM user_accounts 
-  WHERE auth_id = auth.uid();
+  -- Find the superadmin user
+  SELECT user_id INTO v_superadmin_id
+  FROM public.user_accounts
+  WHERE role = 'superadmin'
+  LIMIT 1;
   
-  IF v_caller_user_id IS NULL THEN
+  IF v_superadmin_id IS NULL THEN
     RETURN jsonb_build_object(
       'success', false,
-      'message', 'Authentication required'
-    );
-  END IF;
-  
-  -- Verify the ACTUAL caller is superadmin
-  SELECT (role = 'superadmin') INTO v_is_superadmin
-  FROM user_accounts
-  WHERE user_id = v_caller_user_id;
-  
-  IF NOT v_is_superadmin THEN
-    RETURN jsonb_build_object(
-      'success', false,
-      'message', 'Only superadmins can receive insurance transfers'
+      'message', 'Super admin not found in system'
     );
   END IF;
   
@@ -453,7 +441,7 @@ BEGIN
   
   -- Get and lock escrow balance
   SELECT escrow_balance, activity_uuid INTO v_escrow_balance, v_activity_uuid
-  FROM pr_activities 
+  FROM public.pr_activities 
   WHERE activity_id = p_activity_id
   FOR UPDATE;
   
@@ -472,13 +460,13 @@ BEGIN
   END IF;
   
   -- Transfer tokens: decrease escrow, increase superadmin wallet
-  UPDATE pr_activities
+  UPDATE public.pr_activities
   SET escrow_balance = escrow_balance - p_amount,
       updated_at = NOW()
   WHERE activity_id = p_activity_id;
   
   -- Credit tokens to superadmin wallet
-  INSERT INTO wallet_transactions (
+  INSERT INTO public.wallet_transactions (
     user_id,
     amount,
     transaction_type,
@@ -488,11 +476,11 @@ BEGIN
     related_activity_uuid,
     description
   ) VALUES (
-    v_caller_user_id,
+    v_superadmin_id,
     p_amount,
     'credit',
     'superadmin',
-    v_caller_user_id,
+    v_superadmin_id,
     p_activity_id,
     v_activity_uuid,
     p_description
@@ -502,9 +490,9 @@ BEGIN
     'success', true,
     'message', 'Insurance tokens transferred successfully from escrow',
     'amount', p_amount,
-    'superadmin_id', v_caller_user_id,
+    'superadmin_id', v_superadmin_id,
     'activity_id', p_activity_id,
-    'new_superadmin_balance', get_user_wallet_balance(v_caller_user_id),
+    'new_superadmin_balance', public.get_user_wallet_balance(v_superadmin_id),
     'new_escrow_balance', v_escrow_balance - p_amount
   );
 EXCEPTION
@@ -516,7 +504,7 @@ EXCEPTION
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
-COMMENT ON FUNCTION transfer_escrow_to_superadmin(INTEGER, INTEGER, TEXT) IS 'Transfer insurance tokens from activity escrow to superadmin wallet (caller verified via auth.uid())'; 
+COMMENT ON FUNCTION transfer_escrow_to_superadmin(INTEGER, INTEGER, TEXT) IS 'Transfer insurance tokens from activity escrow to superadmin wallet (system function, no auth required)'; 
 
 -- Atomic escrow funding function (transfer tokens from user wallet to activity escrow)
 CREATE OR REPLACE FUNCTION fund_activity_escrow(
@@ -540,7 +528,7 @@ BEGIN
   
   -- Get and lock user wallet balance
   SELECT balance INTO v_user_balance
-  FROM wallet_balances 
+  FROM public.wallet_balances 
   WHERE user_id = p_user_id
   FOR UPDATE;
   
@@ -560,7 +548,7 @@ BEGIN
   
   -- Get and lock activity escrow
   SELECT escrow_balance, activity_uuid INTO v_current_escrow, v_activity_uuid
-  FROM pr_activities 
+  FROM public.pr_activities 
   WHERE activity_id = p_activity_id
   FOR UPDATE;
   
@@ -574,14 +562,14 @@ BEGIN
   -- ATOMIC TRANSFER: Add to activity escrow, then record transaction (trigger updates wallet)
   
   -- 1. Add tokens to activity escrow and update funding amount
-  UPDATE pr_activities
+  UPDATE public.pr_activities
   SET escrow_balance = escrow_balance + p_amount,
       funding_amount = COALESCE(funding_amount, 0) + p_amount,
       updated_at = NOW()
   WHERE activity_id = p_activity_id;
   
   -- 2. Record the transaction (debit from user) - trigger will update wallet balance automatically
-  INSERT INTO wallet_transactions (
+  INSERT INTO public.wallet_transactions (
     user_id,
     amount,
     transaction_type,

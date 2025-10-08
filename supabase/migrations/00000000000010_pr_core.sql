@@ -53,7 +53,7 @@ DO $$ BEGIN
     'author_response_2',
     'assessment',
     'awarding',
-    'submission_choice',
+    'publication_choice',
     'published_on_ps',
     'submitted_externally',
     'made_private'
@@ -176,10 +176,10 @@ INSERT INTO pr_state_transitions (from_state, to_state) VALUES
   ('author_response_1', 'review_round_2'), 
   ('review_round_2', 'assessment'),
   ('assessment', 'awarding'),
-  ('awarding', 'submission_choice'),
-  ('submission_choice', 'published_on_ps'),
-  ('submission_choice', 'submitted_externally'),
-  ('submission_choice', 'made_private')
+  ('awarding', 'publication_choice'),
+  ('publication_choice', 'published_on_ps'),
+  ('publication_choice', 'submitted_externally'),
+  ('publication_choice', 'made_private')
 ON CONFLICT DO NOTHING;
 
 -- Stage transition rules removed - logic moved to TypeScript (DEVELOPMENT_PRINCIPLES.md)
@@ -309,10 +309,10 @@ INSERT INTO pr_state_transitions(from_state, to_state) VALUES
           ('author_response_1','assessment'),
         ('author_response_2','assessment'),
         ('assessment','awarding'),
-  ('awarding','submission_choice'),
-  ('submission_choice','published_on_ps'),
-  ('submission_choice','submitted_externally'),
-  ('submission_choice','made_private')
+  ('awarding','publication_choice'),
+  ('publication_choice','published_on_ps'),
+  ('publication_choice','submitted_externally'),
+  ('publication_choice','made_private')
 ON CONFLICT DO NOTHING;
 
 -- =============================================

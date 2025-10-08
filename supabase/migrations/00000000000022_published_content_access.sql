@@ -82,7 +82,7 @@ CREATE POLICY "author_responses_access" ON pr_author_responses
         SELECT user_id FROM user_accounts 
         WHERE auth_id = (SELECT auth.uid())
       )
-      AND prt.status = 'joined'
+      AND prt.status IN ('joined', 'locked_in')
     )
   );
 
