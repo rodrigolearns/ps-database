@@ -6,11 +6,11 @@
 -- 
 -- This migration handles:
 -- 1. Etherpad database schema (store table for Etherpad's internal use)
--- 2. PaperStacks schema changes (pr_assessments metadata)
+-- 2. PaperStack schema changes (pr_assessments metadata)
 -- 3. Finalization logic (content hash tracking for reset detection)
 -- 
 -- Architecture:
--- - PaperStacks: Stores metadata (etherpad_pad_id, timeslider_url, etc.)
+-- - PaperStack: Stores metadata (etherpad_pad_id, timeslider_url, etc.)
 -- - Etherpad: Stores content (pads, revisions, authors, sessions)
 -- - Database as Source of Truth for each system
 -- 
@@ -34,7 +34,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- =====================================================
 
 -- Etherpad's main key-value store table
--- This is managed internally by Etherpad - PaperStacks never touches it
+-- This is managed internally by Etherpad - PaperStack never touches it
 -- Resets with database for clean development slate
 CREATE TABLE IF NOT EXISTS store (
   key VARCHAR(100) NOT NULL PRIMARY KEY,
@@ -45,13 +45,13 @@ CREATE TABLE IF NOT EXISTS store (
 CREATE INDEX IF NOT EXISTS store_key_idx ON store(key);
 
 -- Document the table's purpose
-COMMENT ON TABLE store IS 'Etherpad internal key-value storage - managed by Etherpad, not PaperStacks. Resets with database for clean development slate.';
+COMMENT ON TABLE store IS 'Etherpad internal key-value storage - managed by Etherpad, not PaperStack. Resets with database for clean development slate.';
 
 -- Note: Etherpad will create additional internal structures as needed
 -- (groups, pads, authors, sessions) using this store table as its foundation
 
 -- =====================================================
--- PART 2: PAPERSTACKS SCHEMA CHANGES
+-- PART 2: PAPERSTACK SCHEMA CHANGES
 -- =====================================================
 
 -- Remove old turn-based locking mechanism

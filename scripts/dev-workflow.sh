@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# PaperStacks Database Development Workflow Script
+# PaperStack Database Development Workflow Script
 # Usage: ./scripts/dev-workflow.sh [command]
 # Commands: reset, push, types, watch, help
 
@@ -30,15 +30,15 @@ print_error() {
     echo -e "${RED}❌ $1${NC}"
 }
 
-# Function to generate types for paperstacks app
+# Function to generate types for paperstack app
 generate_all_types() {
-    print_info "Generating TypeScript types for paperstacks app..."
+    print_info "Generating TypeScript types for paperstack app..."
     
-    # Generate types for main paperstacks app only
-    print_info "→ Generating types for paperstacks app..."
-    supabase gen types typescript --local > ../paperstacks/src/types/supabase.ts
+    # Generate types for main paperstack app only
+    print_info "→ Generating types for paperstack app..."
+    supabase gen types typescript --local > ../paperstack/src/types/supabase.ts
     
-    print_status "Types generated successfully for paperstacks app"
+    print_status "Types generated successfully for paperstack app"
 }
 
 # Function to reset local database and regenerate types
@@ -50,11 +50,11 @@ reset_and_sync() {
     
     # Restart Etherpad to clear its cache and sync with fresh database
     print_info "Restarting Etherpad container to sync with database reset..."
-    if docker ps --format '{{.Names}}' | grep -q "paperstacks_etherpad"; then
-        docker restart paperstacks_etherpad > /dev/null 2>&1 || true
+    if docker ps --format '{{.Names}}' | grep -q "paperstack_etherpad"; then
+        docker restart paperstack_etherpad > /dev/null 2>&1 || true
         print_status "Etherpad container restarted"
     else
-        print_warning "Etherpad container not found - it may need to be started with 'npm run dev' in paperstacks/"
+        print_warning "Etherpad container not found - it may need to be started with 'npm run dev' in paperstack/"
     fi
     
     print_status "Database reset and types synced"
@@ -94,7 +94,7 @@ watch_changes() {
 # Function to show help
 show_help() {
     echo ""
-    echo "PaperStacks Database Development Workflow"
+    echo "PaperStack Database Development Workflow"
     echo "========================================"
     echo ""
     echo "Usage: ./scripts/dev-workflow.sh [command]"
@@ -102,7 +102,7 @@ show_help() {
     echo "Commands:"
     echo "  reset     Reset local database and regenerate types"
     echo "  push      Push migrations to remote and regenerate types"
-    echo "  types     Generate TypeScript types for paperstacks app"
+    echo "  types     Generate TypeScript types for paperstack app"
     echo "  watch     Watch for migration changes and auto-regenerate types"
     echo "  help      Show this help message"
     echo ""

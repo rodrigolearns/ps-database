@@ -10,7 +10,7 @@
 ALTER TABLE pr_activities 
 ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ,
 ADD COLUMN IF NOT EXISTS published_to TEXT,
-ADD COLUMN IF NOT EXISTS journal_choice TEXT, -- 'paperstacks-library', 'external-journal', 'private'
+ADD COLUMN IF NOT EXISTS journal_choice TEXT, -- 'paperstack-library', 'external-journal', 'private'
 ADD COLUMN IF NOT EXISTS publication_term TEXT CHECK (publication_term IN ('diamond-open-access', 'join-charter', 'custom-access', NULL)),
 ADD COLUMN IF NOT EXISTS completion_status TEXT CHECK (completion_status IN ('published_on_ps', 'submitted_externally', 'made_private', NULL));
 
@@ -29,9 +29,9 @@ WHERE publication_term IS NOT NULL;
 
 -- Add comment to document the new columns
 COMMENT ON COLUMN pr_activities.published_at IS 'Timestamp when the activity was published to a journal/library';
-COMMENT ON COLUMN pr_activities.published_to IS 'Identifier of the journal/library where the activity was published (e.g., paperstacks-library, elife)';
-COMMENT ON COLUMN pr_activities.journal_choice IS 'Authors journal choice: paperstacks-library, external-journal, or private';
-COMMENT ON COLUMN pr_activities.publication_term IS 'Publication term chosen for PaperStacks Library: diamond-open-access, join-charter, or custom-access';
+COMMENT ON COLUMN pr_activities.published_to IS 'Identifier of the journal/library where the activity was published (e.g., paperstack-library, elife)';
+COMMENT ON COLUMN pr_activities.journal_choice IS 'Authors journal choice: paperstack-library, external-journal, or private';
+COMMENT ON COLUMN pr_activities.publication_term IS 'Publication term chosen for PaperStack Library: diamond-open-access, join-charter, or custom-access';
 
 -- Create external_journal_submissions table for tracking external submissions
 CREATE TABLE IF NOT EXISTS external_journal_submissions (
@@ -65,8 +65,8 @@ CREATE TRIGGER update_external_journal_submissions_updated_at
     BEFORE UPDATE ON external_journal_submissions 
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Function to publish activity to PaperStacks Library (now uses published_on_ps state)
-CREATE OR REPLACE FUNCTION publish_to_paperstacks_library(
+-- Function to publish activity to PaperStack Library (now uses published_on_ps state)
+CREATE OR REPLACE FUNCTION publish_to_paperstack_library(
   p_activity_id INTEGER,
   p_publication_term TEXT DEFAULT 'diamond-open-access'
 ) RETURNS BOOLEAN AS $$
@@ -81,10 +81,10 @@ BEGIN
   SET 
     current_state = 'published_on_ps',
     published_at = CURRENT_TIMESTAMP,
-    published_to = 'paperstacks-library',
-    journal_choice = 'paperstacks-library',
+    published_to = 'paperstack-library',
+    journal_choice = 'paperstack-library',
     publication_term = p_publication_term,
-    state_change_reason = 'Published to PaperStacks Library with ' || p_publication_term
+    state_change_reason = 'Published to PaperStack Library with ' || p_publication_term
   WHERE activity_id = p_activity_id 
     AND current_state = 'publication_choice';
   
@@ -93,7 +93,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
-COMMENT ON FUNCTION publish_to_paperstacks_library(INTEGER, TEXT) IS 'Publishes a peer review activity to PaperStacks Library with specified publication term';
+COMMENT ON FUNCTION publish_to_paperstack_library(INTEGER, TEXT) IS 'Publishes a peer review activity to PaperStack Library with specified publication term';
 
 -- Function to submit activity to external journal
 CREATE OR REPLACE FUNCTION submit_to_external_journal(
@@ -154,8 +154,8 @@ CREATE OR REPLACE FUNCTION set_publication_choice(
 ) RETURNS BOOLEAN AS $$
 BEGIN
   CASE p_choice
-    WHEN 'paperstacks-library' THEN
-      RETURN publish_to_paperstacks_library(p_activity_id);
+    WHEN 'paperstack-library' THEN
+      RETURN publish_to_paperstack_library(p_activity_id);
     WHEN 'private' THEN
       RETURN make_activity_private(p_activity_id);
     ELSE
@@ -173,10 +173,10 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
-COMMENT ON FUNCTION set_publication_choice(INTEGER, TEXT) IS 'Sets the publication choice for a peer review activity (paperstacks-library, external-journal, or private)';
+COMMENT ON FUNCTION set_publication_choice(INTEGER, TEXT) IS 'Sets the publication choice for a peer review activity (paperstack-library, external-journal, or private)';
 
 -- Grant necessary permissions
-GRANT EXECUTE ON FUNCTION publish_to_paperstacks_library(INTEGER, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION publish_to_paperstack_library(INTEGER, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION submit_to_external_journal(INTEGER, TEXT, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION make_activity_private(INTEGER) TO authenticated;
 GRANT EXECUTE ON FUNCTION set_publication_choice(INTEGER, TEXT) TO authenticated;

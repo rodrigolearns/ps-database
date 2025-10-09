@@ -1,8 +1,8 @@
--- Migration: PaperStacks Library
--- Create tables for the PaperStacks Library functionality
+-- Migration: PaperStack Library
+-- Create tables for the PaperStack Library functionality
 -- This allows completed peer-reviewed activities to be submitted to the platform's own journal
 
--- Create ps_library_papers table to store papers in the PaperStacks Library
+-- Create ps_library_papers table to store papers in the PaperStack Library
 CREATE TABLE ps_library_papers (
     id SERIAL PRIMARY KEY,
     activity_id INTEGER NOT NULL REFERENCES pr_activities(activity_id) ON DELETE CASCADE,
@@ -186,7 +186,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
--- Create function to submit activity to PaperStacks Library
+-- Create function to submit activity to PaperStack Library
 CREATE OR REPLACE FUNCTION submit_activity_to_library(
     activity_id_param INTEGER,
     title_param VARCHAR(500),
@@ -217,7 +217,7 @@ BEGIN
     ) VALUES (
         activity_id_param, title_param, abstract_param, keywords_param, authors_param,
         review_count, review_duration, subject_area_param, research_type_param,
-        'This paper underwent peer review on the PaperStacks platform with ' || review_count || ' reviewers over ' || review_duration || ' days.'
+        'This paper underwent peer review on the PaperStack platform with ' || review_count || ' reviewers over ' || review_duration || ' days.'
     ) RETURNING id INTO paper_id;
     
     -- Copy anonymized reviews
@@ -310,7 +310,7 @@ CREATE TRIGGER update_journal_submissions_updated_at
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Add comment to the migration
-COMMENT ON TABLE ps_library_papers IS 'Stores papers published in the PaperStacks Library with full peer review transparency';
+COMMENT ON TABLE ps_library_papers IS 'Stores papers published in the PaperStack Library with full peer review transparency';
 COMMENT ON TABLE ps_library_reviews IS 'Stores anonymized peer review data for library papers';
 COMMENT ON TABLE ps_library_author_responses IS 'Stores author responses to peer reviews for library papers';
 COMMENT ON TABLE ps_library_files IS 'Stores files associated with library papers';

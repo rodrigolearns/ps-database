@@ -1,6 +1,6 @@
-# PaperStacks Database Service
+# PaperStack Database Service
 
-This service manages the Supabase database configuration for the PaperStacks platform.
+This service manages the Supabase database configuration for the PaperStack platform.
 
 ## Structure
 
@@ -10,7 +10,7 @@ This service manages the Supabase database configuration for the PaperStacks pla
 
 ## Usage
 
-The migrations in this service define the database structure used by all PaperStacks microservices. Each microservice accesses only the tables relevant to its domain.
+The migrations in this service define the database structure used by all PaperStack microservices. Each microservice accesses only the tables relevant to its domain.
 
 ## Local Development
 

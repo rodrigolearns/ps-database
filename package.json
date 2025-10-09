@@ -1,14 +1,14 @@
 {
   "name": "ps-database",
   "version": "0.1.0",
-  "description": "Database service for PaperStacks platform",
+  "description": "Database service for PaperStack platform",
   "scripts": {
     "migrate": "supabase db push",
     "migrate:local": "supabase db reset",
     "seed": "node ./scripts/seed.js",
-    "generate:types": "supabase gen types typescript --local > ../paperstacks/src/types/supabase.ts",
+    "generate:types": "supabase gen types typescript --local > ../paperstack/src/types/supabase.ts",
     "generate:types:all": "npm run generate:types && npm run generate:types:pub",
-    "generate:types:pub": "supabase gen types typescript --local > ../paperstacks.pub/src/types/supabase.ts",
+    "generate:types:pub": "supabase gen types typescript --local > ../paperstack.pub/src/types/supabase.ts",
     "dev:sync": "npm run migrate:local && npm run generate:types",
     "dev:push": "npm run migrate && npm run generate:types",
     "capture": "./scripts/capture-changes.sh",

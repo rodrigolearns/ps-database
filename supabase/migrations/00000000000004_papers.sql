@@ -32,7 +32,7 @@ COMMENT ON TABLE papers IS 'Academic papers submitted to the platform';
 COMMENT ON COLUMN papers.paper_id IS 'Primary key for the paper';
 COMMENT ON COLUMN papers.title IS 'Title of the paper';
 COMMENT ON COLUMN papers.abstract IS 'Abstract of the paper';
-COMMENT ON COLUMN papers.paperstack_doi IS 'Digital Object Identifier assigned by PaperStacks';
+COMMENT ON COLUMN papers.paperstack_doi IS 'Digital Object Identifier assigned by PaperStack';
 COMMENT ON COLUMN papers.preprint_doi IS 'DOI for the preprint, if applicable';
 COMMENT ON COLUMN papers.preprint_source IS 'Source of the preprint, if applicable';
 COMMENT ON COLUMN papers.preprint_date IS 'Date the preprint was published, if applicable';

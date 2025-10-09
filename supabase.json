@@ -1,7 +1,7 @@
 {
-  "projectId": "paperstacks",
-  "organization": "paperstacks",
-  "name": "PaperStacks Platform",
+  "projectId": "paperstack",
+  "organization": "paperstack",
+  "name": "PaperStack Platform",
   "regions": ["us-east-1"],
   "db": {
     "extensions": [

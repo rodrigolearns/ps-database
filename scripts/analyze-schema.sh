@@ -13,7 +13,7 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}📊 PaperStacks Database Schema Analysis${NC}"
+echo -e "${BLUE}📊 PaperStack Database Schema Analysis${NC}"
 echo "========================================"
 
 # Check if supabase is running
