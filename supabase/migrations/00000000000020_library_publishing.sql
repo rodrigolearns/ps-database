@@ -11,6 +11,7 @@ ALTER TABLE pr_activities
 ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ,
 ADD COLUMN IF NOT EXISTS published_to TEXT,
 ADD COLUMN IF NOT EXISTS journal_choice TEXT, -- 'paperstacks-library', 'external-journal', 'private'
+ADD COLUMN IF NOT EXISTS publication_term TEXT CHECK (publication_term IN ('diamond-open-access', 'join-charter', 'custom-access', NULL)),
 ADD COLUMN IF NOT EXISTS completion_status TEXT CHECK (completion_status IN ('published_on_ps', 'submitted_externally', 'made_private', NULL));
 
 -- Create index for published activities (now published_on_ps state)
@@ -21,10 +22,16 @@ ON pr_activities(current_state, published_to, published_at);
 CREATE INDEX IF NOT EXISTS idx_pr_activities_journal_choice 
 ON pr_activities(journal_choice, current_state);
 
+-- Create index for publication terms
+CREATE INDEX IF NOT EXISTS idx_pr_activities_publication_term 
+ON pr_activities(publication_term) 
+WHERE publication_term IS NOT NULL;
+
 -- Add comment to document the new columns
 COMMENT ON COLUMN pr_activities.published_at IS 'Timestamp when the activity was published to a journal/library';
 COMMENT ON COLUMN pr_activities.published_to IS 'Identifier of the journal/library where the activity was published (e.g., paperstacks-library, elife)';
 COMMENT ON COLUMN pr_activities.journal_choice IS 'Authors journal choice: paperstacks-library, external-journal, or private';
+COMMENT ON COLUMN pr_activities.publication_term IS 'Publication term chosen for PaperStacks Library: diamond-open-access, join-charter, or custom-access';
 
 -- Create external_journal_submissions table for tracking external submissions
 CREATE TABLE IF NOT EXISTS external_journal_submissions (
@@ -60,26 +67,33 @@ CREATE TRIGGER update_external_journal_submissions_updated_at
 
 -- Function to publish activity to PaperStacks Library (now uses published_on_ps state)
 CREATE OR REPLACE FUNCTION publish_to_paperstacks_library(
-  p_activity_id INTEGER
+  p_activity_id INTEGER,
+  p_publication_term TEXT DEFAULT 'diamond-open-access'
 ) RETURNS BOOLEAN AS $$
 BEGIN
+  -- Validate publication term
+  IF p_publication_term NOT IN ('diamond-open-access', 'join-charter', 'custom-access') THEN
+    RAISE EXCEPTION 'Invalid publication term: %', p_publication_term;
+  END IF;
+
   -- Update the activity to published_on_ps state
-  UPDATE pr_activities
+  UPDATE public.pr_activities
   SET 
     current_state = 'published_on_ps',
     published_at = CURRENT_TIMESTAMP,
     published_to = 'paperstacks-library',
     journal_choice = 'paperstacks-library',
-    state_change_reason = 'Published to PaperStacks Library'
+    publication_term = p_publication_term,
+    state_change_reason = 'Published to PaperStacks Library with ' || p_publication_term
   WHERE activity_id = p_activity_id 
     AND current_state = 'publication_choice';
   
   -- Return true if activity was updated
   RETURN FOUND;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
-COMMENT ON FUNCTION publish_to_paperstacks_library(INTEGER) IS 'Publishes a peer review activity to PaperStacks Library';
+COMMENT ON FUNCTION publish_to_paperstacks_library(INTEGER, TEXT) IS 'Publishes a peer review activity to PaperStacks Library with specified publication term';
 
 -- Function to submit activity to external journal
 CREATE OR REPLACE FUNCTION submit_to_external_journal(
@@ -89,7 +103,7 @@ CREATE OR REPLACE FUNCTION submit_to_external_journal(
 ) RETURNS BOOLEAN AS $$
 BEGIN
   -- Update the activity to submitted_externally state
-  UPDATE pr_activities
+  UPDATE public.pr_activities
   SET 
     current_state = 'submitted_externally',
     published_to = p_journal_id,
@@ -100,7 +114,7 @@ BEGIN
   
   IF FOUND THEN
     -- Create external submission record
-    INSERT INTO external_journal_submissions (activity_id, journal_id, journal_name)
+    INSERT INTO public.external_journal_submissions (activity_id, journal_id, journal_name)
     VALUES (p_activity_id, p_journal_id, p_journal_name)
     ON CONFLICT (activity_id, journal_id) DO NOTHING;
   END IF;
@@ -108,7 +122,7 @@ BEGIN
   -- Return true if activity was updated
   RETURN FOUND;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 COMMENT ON FUNCTION submit_to_external_journal(INTEGER, TEXT, TEXT) IS 'Submits a peer review activity to an external journal';
 
@@ -118,7 +132,7 @@ CREATE OR REPLACE FUNCTION make_activity_private(
 ) RETURNS BOOLEAN AS $$
 BEGIN
   -- Update the activity to made_private state
-  UPDATE pr_activities
+  UPDATE public.pr_activities
   SET 
     current_state = 'made_private',
     journal_choice = 'private',
@@ -129,7 +143,7 @@ BEGIN
   -- Return true if activity was updated
   RETURN FOUND;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 COMMENT ON FUNCTION make_activity_private(INTEGER) IS 'Makes a peer review activity private (not published anywhere)';
 
@@ -147,7 +161,7 @@ BEGIN
     ELSE
       -- For external journals, this function just sets the choice
       -- The actual external journal submission should use submit_to_external_journal
-      UPDATE pr_activities
+      UPDATE public.pr_activities
       SET 
         journal_choice = p_choice,
         state_change_reason = 'Publication choice set to: ' || p_choice
@@ -157,12 +171,12 @@ BEGIN
       RETURN FOUND;
   END CASE;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 COMMENT ON FUNCTION set_publication_choice(INTEGER, TEXT) IS 'Sets the publication choice for a peer review activity (paperstacks-library, external-journal, or private)';
 
 -- Grant necessary permissions
-GRANT EXECUTE ON FUNCTION publish_to_paperstacks_library(INTEGER) TO authenticated;
+GRANT EXECUTE ON FUNCTION publish_to_paperstacks_library(INTEGER, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION submit_to_external_journal(INTEGER, TEXT, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION make_activity_private(INTEGER) TO authenticated;
 GRANT EXECUTE ON FUNCTION set_publication_choice(INTEGER, TEXT) TO authenticated;
