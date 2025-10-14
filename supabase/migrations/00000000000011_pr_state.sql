@@ -199,3 +199,21 @@ GRANT EXECUTE ON FUNCTION check_reviewer_team_complete(INTEGER) TO authenticated
 GRANT EXECUTE ON FUNCTION check_all_reviews_submitted(INTEGER, INTEGER) TO authenticated;
 GRANT EXECUTE ON FUNCTION check_author_response_submitted(INTEGER, INTEGER) TO authenticated;
 GRANT EXECUTE ON FUNCTION get_expired_activities() TO authenticated;
+
+-- =============================================
+-- RLS POLICIES FOR pr_processing_log
+-- =============================================
+-- Resolves security warning: RLS disabled on pr_processing_log
+-- Access pattern: Service role only (will be extended with participant access in migration 12)
+-- Used by: State progression logging
+
+ALTER TABLE pr_processing_log ENABLE ROW LEVEL SECURITY;
+
+-- Basic policy: Only service role can access (will be extended in migration 12)
+CREATE POLICY pr_processing_log_service_role_only ON pr_processing_log
+  FOR ALL
+  USING ((SELECT auth.role()) = 'service_role')
+  WITH CHECK ((SELECT auth.role()) = 'service_role');
+
+COMMENT ON POLICY pr_processing_log_service_role_only ON pr_processing_log IS
+  'Service role only (extended with participant access in migration 12)';

@@ -344,3 +344,22 @@ GRANT EXECUTE ON FUNCTION toggle_reviewer_finalization(INTEGER, INTEGER, BOOLEAN
 GRANT EXECUTE ON FUNCTION reset_all_finalization_on_content_change(INTEGER) TO authenticated;
 GRANT EXECUTE ON FUNCTION create_assessment_with_etherpad(INTEGER, TEXT, TEXT) TO authenticated;
 
+-- =============================================
+-- RLS POLICIES FOR store (Etherpad table)
+-- =============================================
+-- Resolves security warning: RLS disabled on store
+-- Access pattern: Etherpad internal use only (managed by Etherpad, not PaperStack)
+-- Used by: Etherpad collaborative editing
+
+ALTER TABLE store ENABLE ROW LEVEL SECURITY;
+
+-- Only service role can access the store table (Etherpad uses service role)
+-- Regular users should never directly access Etherpad's internal storage
+CREATE POLICY store_service_role_only ON store
+  FOR ALL
+  USING ((SELECT auth.role()) = 'service_role')
+  WITH CHECK ((SELECT auth.role()) = 'service_role');
+
+COMMENT ON POLICY store_service_role_only ON store IS
+  'Etherpad internal storage - only accessible by service role (Etherpad backend)';
+

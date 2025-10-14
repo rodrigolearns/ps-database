@@ -5,7 +5,8 @@
 
 -- Create a materialized view for completed review activities
 -- This provides better performance for the reviewing dashboard
-CREATE OR REPLACE VIEW reviewer_completed_activities AS
+-- Changed to SECURITY INVOKER to rely on RLS policies (Sprint 3 security hardening)
+CREATE OR REPLACE VIEW reviewer_completed_activities WITH (security_invoker = true) AS
 SELECT 
   rt.team_id,
   rt.activity_id,

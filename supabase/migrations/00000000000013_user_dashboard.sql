@@ -52,9 +52,20 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_user_paper_summary_paper_id
 COMMENT ON MATERIALIZED VIEW public.user_paper_summary IS
   'Optimized summary of papers with author info and PR state - refreshed periodically';
 
+ALTER MATERIALIZED VIEW user_paper_summary OWNER TO postgres;
+
+-- Note: Materialized views cannot have RLS policies directly applied.
+-- Instead, access to this materialized view should be controlled through:
+-- 1. Functions with SECURITY DEFINER that check permissions
+-- 2. Views on top of this materialized view with RLS enabled
+-- 3. API layer permission checks
+-- For now, this materialized view is only accessed through get_user_papers() function
+-- which has SECURITY DEFINER and filters by user_id
+
 -- Fallback view using legacy structure for backward compatibility
+-- Changed to SECURITY INVOKER to rely on RLS policies (Sprint 3 security hardening)
 DROP VIEW IF EXISTS public.user_papers_view_legacy;
-CREATE OR REPLACE VIEW public.user_papers_view_legacy AS
+CREATE OR REPLACE VIEW public.user_papers_view_legacy WITH (security_invoker = true) AS
 SELECT
   p.*,
   authors.jsonb_agg      AS authors,
@@ -135,8 +146,9 @@ COMMENT ON FUNCTION refresh_user_paper_summary IS
   'Refresh the materialized view for paper summaries';
 
 -- 3) Build a view of every review activity the user is on, with paper info + status
+-- Changed to SECURITY INVOKER to rely on RLS policies (Sprint 3 security hardening)
 DROP VIEW IF EXISTS public.user_review_activities;
-CREATE OR REPLACE VIEW public.user_review_activities AS
+CREATE OR REPLACE VIEW public.user_review_activities WITH (security_invoker = true) AS
 SELECT
   rt.user_id,
   rt.activity_id,

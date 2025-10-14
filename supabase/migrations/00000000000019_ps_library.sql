@@ -256,7 +256,8 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 -- Create view for public library papers with metrics
-CREATE VIEW ps_library_public_papers AS
+-- Changed to SECURITY INVOKER to rely on RLS policies (Sprint 3 security hardening)
+CREATE VIEW ps_library_public_papers WITH (security_invoker = true) AS
 SELECT 
     p.id,
     p.activity_id,
@@ -316,4 +317,195 @@ COMMENT ON TABLE ps_library_author_responses IS 'Stores author responses to peer
 COMMENT ON TABLE ps_library_files IS 'Stores files associated with library papers';
 COMMENT ON TABLE ps_library_citations IS 'Tracks citations between library papers';
 COMMENT ON TABLE ps_library_metrics IS 'Tracks engagement and impact metrics for library papers'; 
-COMMENT ON TABLE journal_submissions IS 'Tracks journal submissions for peer review activities'; 
+COMMENT ON TABLE journal_submissions IS 'Tracks journal submissions for peer review activities';
+
+-- =============================================
+-- RLS POLICIES FOR LIBRARY TABLES
+-- =============================================
+-- Resolves security warnings: RLS disabled on ps_library_* tables, journal_submissions
+-- Access pattern: Public papers readable by all, private papers by activity participants only
+-- Used by: ps_library_public_papers view, /api/library/papers
+
+-- =============================================
+-- 1. ps_library_papers
+-- =============================================
+ALTER TABLE ps_library_papers ENABLE ROW LEVEL SECURITY;
+
+-- Public papers are readable by everyone
+-- Private papers are readable by activity participants only
+CREATE POLICY ps_library_papers_select_public_or_participant ON ps_library_papers
+  FOR SELECT
+  USING (
+    is_public = true OR
+    EXISTS (
+      SELECT 1 FROM pr_activity_permissions pap
+      WHERE pap.activity_id = ps_library_papers.activity_id
+      AND pap.user_id = (SELECT auth_user_id())
+    ) OR
+    (SELECT auth.role()) = 'service_role'
+  );
+
+-- Only service role can modify library papers (managed by publication workflow)
+CREATE POLICY ps_library_papers_modify_service_role_only ON ps_library_papers
+  FOR ALL
+  USING ((SELECT auth.role()) = 'service_role')
+  WITH CHECK ((SELECT auth.role()) = 'service_role');
+
+COMMENT ON POLICY ps_library_papers_select_public_or_participant ON ps_library_papers IS
+  'Public papers readable by all, private papers by activity participants only';
+
+-- =============================================
+-- 2. ps_library_reviews
+-- =============================================
+ALTER TABLE ps_library_reviews ENABLE ROW LEVEL SECURITY;
+
+-- Reviews are readable if the parent paper is public
+CREATE POLICY ps_library_reviews_select_if_paper_public ON ps_library_reviews
+  FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM ps_library_papers plp
+      WHERE plp.id = ps_library_reviews.paper_id
+      AND plp.is_public = true
+    ) OR
+    (SELECT auth.role()) = 'service_role'
+  );
+
+-- Only service role can modify reviews
+CREATE POLICY ps_library_reviews_modify_service_role_only ON ps_library_reviews
+  FOR ALL
+  USING ((SELECT auth.role()) = 'service_role')
+  WITH CHECK ((SELECT auth.role()) = 'service_role');
+
+COMMENT ON POLICY ps_library_reviews_select_if_paper_public ON ps_library_reviews IS
+  'Reviews visible only if parent paper is public';
+
+-- =============================================
+-- 3. ps_library_author_responses
+-- =============================================
+ALTER TABLE ps_library_author_responses ENABLE ROW LEVEL SECURITY;
+
+-- Author responses are readable if the parent paper is public
+CREATE POLICY ps_library_author_responses_select_if_paper_public ON ps_library_author_responses
+  FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM ps_library_papers plp
+      WHERE plp.id = ps_library_author_responses.paper_id
+      AND plp.is_public = true
+    ) OR
+    (SELECT auth.role()) = 'service_role'
+  );
+
+-- Only service role can modify author responses
+CREATE POLICY ps_library_author_responses_modify_service_role_only ON ps_library_author_responses
+  FOR ALL
+  USING ((SELECT auth.role()) = 'service_role')
+  WITH CHECK ((SELECT auth.role()) = 'service_role');
+
+COMMENT ON POLICY ps_library_author_responses_select_if_paper_public ON ps_library_author_responses IS
+  'Author responses visible only if parent paper is public';
+
+-- =============================================
+-- 4. ps_library_files
+-- =============================================
+ALTER TABLE ps_library_files ENABLE ROW LEVEL SECURITY;
+
+-- Files are accessible if the parent paper is public
+CREATE POLICY ps_library_files_select_if_paper_public ON ps_library_files
+  FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM ps_library_papers plp
+      WHERE plp.id = ps_library_files.paper_id
+      AND plp.is_public = true
+    ) OR
+    (SELECT auth.role()) = 'service_role'
+  );
+
+-- Only service role can modify files
+CREATE POLICY ps_library_files_modify_service_role_only ON ps_library_files
+  FOR ALL
+  USING ((SELECT auth.role()) = 'service_role')
+  WITH CHECK ((SELECT auth.role()) = 'service_role');
+
+COMMENT ON POLICY ps_library_files_select_if_paper_public ON ps_library_files IS
+  'Files accessible only if parent paper is public';
+
+-- =============================================
+-- 5. ps_library_citations
+-- =============================================
+ALTER TABLE ps_library_citations ENABLE ROW LEVEL SECURITY;
+
+-- Citations are readable if the parent paper is public
+CREATE POLICY ps_library_citations_select_if_paper_public ON ps_library_citations
+  FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM ps_library_papers plp
+      WHERE plp.id = ps_library_citations.paper_id
+      AND plp.is_public = true
+    ) OR
+    (SELECT auth.role()) = 'service_role'
+  );
+
+-- Only service role can modify citations
+CREATE POLICY ps_library_citations_modify_service_role_only ON ps_library_citations
+  FOR ALL
+  USING ((SELECT auth.role()) = 'service_role')
+  WITH CHECK ((SELECT auth.role()) = 'service_role');
+
+COMMENT ON POLICY ps_library_citations_select_if_paper_public ON ps_library_citations IS
+  'Citations visible only if parent paper is public';
+
+-- =============================================
+-- 6. ps_library_metrics
+-- =============================================
+ALTER TABLE ps_library_metrics ENABLE ROW LEVEL SECURITY;
+
+-- Metrics are readable if the parent paper is public
+CREATE POLICY ps_library_metrics_select_if_paper_public ON ps_library_metrics
+  FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM ps_library_papers plp
+      WHERE plp.id = ps_library_metrics.paper_id
+      AND plp.is_public = true
+    ) OR
+    (SELECT auth.role()) = 'service_role'
+  );
+
+-- Only service role can modify metrics
+CREATE POLICY ps_library_metrics_modify_service_role_only ON ps_library_metrics
+  FOR ALL
+  USING ((SELECT auth.role()) = 'service_role')
+  WITH CHECK ((SELECT auth.role()) = 'service_role');
+
+COMMENT ON POLICY ps_library_metrics_select_if_paper_public ON ps_library_metrics IS
+  'Metrics visible only if parent paper is public';
+
+-- =============================================
+-- 7. journal_submissions
+-- =============================================
+ALTER TABLE journal_submissions ENABLE ROW LEVEL SECURITY;
+
+-- Activity participants can see journal submissions for their activities
+CREATE POLICY journal_submissions_select_participant ON journal_submissions
+  FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM pr_activity_permissions pap
+      WHERE pap.activity_id = journal_submissions.activity_id
+      AND pap.user_id = (SELECT auth_user_id())
+    ) OR
+    (SELECT auth.role()) = 'service_role'
+  );
+
+-- Only service role can modify journal submissions
+CREATE POLICY journal_submissions_modify_service_role_only ON journal_submissions
+  FOR ALL
+  USING ((SELECT auth.role()) = 'service_role')
+  WITH CHECK ((SELECT auth.role()) = 'service_role');
+
+COMMENT ON POLICY journal_submissions_select_participant ON journal_submissions IS
+  'Activity participants can see journal submissions for their activities'; 

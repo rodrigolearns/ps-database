@@ -67,4 +67,52 @@ CREATE INDEX IF NOT EXISTS idx_file_storage_file_path ON file_storage (file_path
 CREATE TRIGGER update_file_storage_updated_at
   BEFORE UPDATE ON file_storage
   FOR EACH ROW
-  EXECUTE FUNCTION set_updated_at(); 
+  EXECUTE FUNCTION set_updated_at();
+
+-- =============================================
+-- RLS POLICIES FOR file_storage
+-- =============================================
+-- Resolves security warning: RLS disabled on file_storage
+-- Access pattern: Users see files they uploaded or public files
+-- Note: Activity-based access will be extended in migration 12 after pr_activity_permissions is created
+-- Used by: Paper submission, file upload routes
+
+ALTER TABLE file_storage ENABLE ROW LEVEL SECURITY;
+
+-- Basic policy: Users can see files they uploaded or public files
+-- This will be extended in migration 12 with activity participant access
+CREATE POLICY file_storage_select_own_or_public ON file_storage
+  FOR SELECT
+  USING (
+    uploaded_by = (SELECT auth_user_id()) OR
+    is_public = true OR
+    (SELECT auth.role()) = 'service_role'
+  );
+
+-- Users can upload files (INSERT)
+CREATE POLICY file_storage_insert_own ON file_storage
+  FOR INSERT
+  WITH CHECK (
+    uploaded_by = (SELECT auth_user_id()) OR
+    (SELECT auth.role()) = 'service_role'
+  );
+
+-- Users can update their own files, service role can update all
+CREATE POLICY file_storage_update_own_or_service ON file_storage
+  FOR UPDATE
+  USING (
+    uploaded_by = (SELECT auth_user_id()) OR
+    (SELECT auth.role()) = 'service_role'
+  )
+  WITH CHECK (
+    uploaded_by = (SELECT auth_user_id()) OR
+    (SELECT auth.role()) = 'service_role'
+  );
+
+-- Only service role can delete files (managed by cleanup workflows)
+CREATE POLICY file_storage_delete_service_role_only ON file_storage
+  FOR DELETE
+  USING ((SELECT auth.role()) = 'service_role');
+
+COMMENT ON POLICY file_storage_select_own_or_public ON file_storage IS
+  'Users see files they uploaded or public files (extended with activity access in migration 12)'; 

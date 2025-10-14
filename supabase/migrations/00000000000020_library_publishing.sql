@@ -191,3 +191,33 @@ GRANT EXECUTE ON FUNCTION set_publication_choice(INTEGER, TEXT) TO service_role;
 -- Add comments to new columns
 COMMENT ON COLUMN pr_activities.completion_status IS 'Final completion status of the activity after publication choice';
 COMMENT ON TABLE external_journal_submissions IS 'Tracks submissions to external journals separate from activity state';
+
+-- =============================================
+-- RLS POLICIES FOR external_journal_submissions
+-- =============================================
+-- Resolves security warning: RLS disabled on external_journal_submissions
+-- Access pattern: Activity participants can see external submissions for their activities
+-- Used by: Publication choice workflow
+
+ALTER TABLE external_journal_submissions ENABLE ROW LEVEL SECURITY;
+
+-- Activity participants can see external journal submissions for their activities
+CREATE POLICY external_journal_submissions_select_participant ON external_journal_submissions
+  FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM pr_activity_permissions pap
+      WHERE pap.activity_id = external_journal_submissions.activity_id
+      AND pap.user_id = (SELECT auth_user_id())
+    ) OR
+    (SELECT auth.role()) = 'service_role'
+  );
+
+-- Only service role can modify external journal submissions
+CREATE POLICY external_journal_submissions_modify_service_role_only ON external_journal_submissions
+  FOR ALL
+  USING ((SELECT auth.role()) = 'service_role')
+  WITH CHECK ((SELECT auth.role()) = 'service_role');
+
+COMMENT ON POLICY external_journal_submissions_select_participant ON external_journal_submissions IS
+  'Activity participants can see external journal submissions for their activities';

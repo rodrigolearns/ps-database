@@ -212,6 +212,18 @@ GRANT EXECUTE ON FUNCTION refresh_admin_activities_view() TO service_role;
 GRANT EXECUTE ON FUNCTION check_admin_view_staleness() TO authenticated;
 GRANT EXECUTE ON FUNCTION refresh_admin_activities_view_manual() TO authenticated;
 
+-- =============================================
+-- SECURITY NOTE FOR admin_activities_view
+-- =============================================
+-- Materialized views cannot have RLS policies directly applied in PostgreSQL.
+-- Access control is handled through:
+-- 1. GRANT SELECT only to authenticated role (line 210)
+-- 2. API layer checks for admin/superadmin role before querying
+-- 3. refresh_admin_activities_view_manual() function checks admin role before allowing refresh
+-- This ensures only admins can access this sensitive data.
+
+ALTER MATERIALIZED VIEW admin_activities_view OWNER TO postgres;
+
 -- Initial refresh
 SELECT refresh_admin_activities_view();
 

@@ -84,4 +84,114 @@ CREATE INDEX IF NOT EXISTS idx_pr_reviewer_rankings_reviewer_id ON pr_reviewer_r
 CREATE INDEX IF NOT EXISTS idx_pr_reviewer_rankings_final_rank ON pr_reviewer_rankings (final_rank);
 
 CREATE INDEX IF NOT EXISTS idx_pr_award_distribution_status_activity_id ON pr_award_distribution_status (activity_id);
-CREATE INDEX IF NOT EXISTS idx_pr_award_distribution_status_participant_id ON pr_award_distribution_status (participant_id); 
+CREATE INDEX IF NOT EXISTS idx_pr_award_distribution_status_participant_id ON pr_award_distribution_status (participant_id);
+
+-- =============================================
+-- RLS POLICIES FOR AWARDING TABLES
+-- =============================================
+-- Resolves security warnings: RLS disabled on pr_award_distributions, pr_reviewer_rankings, pr_award_distribution_status
+-- Access pattern: Users see their own data + activity participants see all for transparency
+-- Used by: reviewer_completed_activities view, awarding services
+
+-- =============================================
+-- 1. pr_reviewer_rankings
+-- =============================================
+ALTER TABLE pr_reviewer_rankings ENABLE ROW LEVEL SECURITY;
+
+-- Reviewers can see their own rankings
+-- Activity participants can see all rankings in their activity (for transparency)
+CREATE POLICY pr_reviewer_rankings_select_own_or_participant ON pr_reviewer_rankings
+  FOR SELECT
+  USING (
+    reviewer_id = (SELECT auth_user_id()) OR
+    -- Activity participants can see all rankings (transparency in peer review)
+    EXISTS (
+      SELECT 1 FROM pr_activity_permissions pap
+      WHERE pap.activity_id = pr_reviewer_rankings.activity_id
+      AND pap.user_id = (SELECT auth_user_id())
+    ) OR
+    (SELECT auth.role()) = 'service_role'
+  );
+
+-- Only service role can modify rankings (managed by awarding service)
+CREATE POLICY pr_reviewer_rankings_insert_service_role_only ON pr_reviewer_rankings
+  FOR INSERT
+  WITH CHECK ((SELECT auth.role()) = 'service_role');
+
+CREATE POLICY pr_reviewer_rankings_update_service_role_only ON pr_reviewer_rankings
+  FOR UPDATE
+  USING ((SELECT auth.role()) = 'service_role')
+  WITH CHECK ((SELECT auth.role()) = 'service_role');
+
+CREATE POLICY pr_reviewer_rankings_delete_service_role_only ON pr_reviewer_rankings
+  FOR DELETE
+  USING ((SELECT auth.role()) = 'service_role');
+
+COMMENT ON POLICY pr_reviewer_rankings_select_own_or_participant ON pr_reviewer_rankings IS
+  'Reviewers see own rankings, activity participants see all rankings for transparency';
+
+-- =============================================
+-- 2. pr_award_distributions
+-- =============================================
+ALTER TABLE pr_award_distributions ENABLE ROW LEVEL SECURITY;
+
+-- Users can see awards they gave or received
+-- Activity participants can see all awards in their activity
+CREATE POLICY pr_award_distributions_select_participant ON pr_award_distributions
+  FOR SELECT
+  USING (
+    giver_id = (SELECT auth_user_id()) OR
+    receiver_id = (SELECT auth_user_id()) OR
+    -- Activity participants can see all awards (transparency)
+    EXISTS (
+      SELECT 1 FROM pr_activity_permissions pap
+      WHERE pap.activity_id = pr_award_distributions.activity_id
+      AND pap.user_id = (SELECT auth_user_id())
+    ) OR
+    (SELECT auth.role()) = 'service_role'
+  );
+
+-- Only service role can modify awards (managed by awarding service)
+CREATE POLICY pr_award_distributions_insert_service_role_only ON pr_award_distributions
+  FOR INSERT
+  WITH CHECK ((SELECT auth.role()) = 'service_role');
+
+CREATE POLICY pr_award_distributions_update_service_role_only ON pr_award_distributions
+  FOR UPDATE
+  USING ((SELECT auth.role()) = 'service_role')
+  WITH CHECK ((SELECT auth.role()) = 'service_role');
+
+CREATE POLICY pr_award_distributions_delete_service_role_only ON pr_award_distributions
+  FOR DELETE
+  USING ((SELECT auth.role()) = 'service_role');
+
+COMMENT ON POLICY pr_award_distributions_select_participant ON pr_award_distributions IS
+  'Users see awards they gave/received, activity participants see all for transparency';
+
+-- =============================================
+-- 3. pr_award_distribution_status
+-- =============================================
+ALTER TABLE pr_award_distribution_status ENABLE ROW LEVEL SECURITY;
+
+-- Users can see their own distribution status
+-- Activity participants can see all statuses in their activity
+CREATE POLICY pr_award_distribution_status_select_participant ON pr_award_distribution_status
+  FOR SELECT
+  USING (
+    participant_id = (SELECT auth_user_id()) OR
+    EXISTS (
+      SELECT 1 FROM pr_activity_permissions pap
+      WHERE pap.activity_id = pr_award_distribution_status.activity_id
+      AND pap.user_id = (SELECT auth_user_id())
+    ) OR
+    (SELECT auth.role()) = 'service_role'
+  );
+
+-- Only service role can modify distribution status
+CREATE POLICY pr_award_distribution_status_modify_service_role_only ON pr_award_distribution_status
+  FOR ALL
+  USING ((SELECT auth.role()) = 'service_role')
+  WITH CHECK ((SELECT auth.role()) = 'service_role');
+
+COMMENT ON POLICY pr_award_distribution_status_select_participant ON pr_award_distribution_status IS
+  'Users see own status, activity participants see all statuses'; 

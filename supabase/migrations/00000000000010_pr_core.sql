@@ -458,3 +458,148 @@ INCLUDE (current_state, stage_deadline, posted_at, escrow_balance, activity_uuid
 
 REVOKE EXECUTE ON FUNCTION update_activity_state(INTEGER, activity_state, activity_state, INTEGER, TEXT) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION update_activity_state(INTEGER, activity_state, activity_state, INTEGER, TEXT) TO service_role;
+
+-- =============================================
+-- RLS POLICIES FOR CORE PR TABLES
+-- =============================================
+-- Resolves security warnings: RLS disabled on pr_activities, pr_stage_data, pr_state_log, pr_processing_log
+-- Access pattern: Users see activities they created or public activities (extended in migration 12)
+-- Note: Activity participant access will be added in migration 12 after pr_activity_permissions is created
+-- Used by: All PR activity routes, timeline, admin dashboard
+
+-- =============================================
+-- 1. pr_activities (CRITICAL - P0)
+-- =============================================
+ALTER TABLE pr_activities ENABLE ROW LEVEL SECURITY;
+
+-- Basic policy: Users can see activities they created or public activities
+-- This will be extended in migration 12 with activity participant access
+CREATE POLICY pr_activities_select_creator_or_public ON pr_activities
+  FOR SELECT
+  USING (
+    creator_id = (SELECT auth_user_id()) OR
+    current_state = 'published_on_ps' OR
+    (SELECT auth.role()) = 'service_role'
+  );
+
+-- Only service role can modify activities (managed by progression orchestrator)
+CREATE POLICY pr_activities_insert_service_role_only ON pr_activities
+  FOR INSERT
+  WITH CHECK ((SELECT auth.role()) = 'service_role');
+
+CREATE POLICY pr_activities_update_service_role_only ON pr_activities
+  FOR UPDATE
+  USING ((SELECT auth.role()) = 'service_role')
+  WITH CHECK ((SELECT auth.role()) = 'service_role');
+
+CREATE POLICY pr_activities_delete_service_role_only ON pr_activities
+  FOR DELETE
+  USING ((SELECT auth.role()) = 'service_role');
+
+COMMENT ON POLICY pr_activities_select_creator_or_public ON pr_activities IS
+  'Users see activities they created or public activities (extended with participant access in migration 12)';
+
+-- =============================================
+-- 2. pr_stage_data (CRITICAL - P0)
+-- =============================================
+ALTER TABLE pr_stage_data ENABLE ROW LEVEL SECURITY;
+
+-- Basic policy: Only service role can access (will be extended in migration 12)
+CREATE POLICY pr_stage_data_service_role_only ON pr_stage_data
+  FOR ALL
+  USING ((SELECT auth.role()) = 'service_role')
+  WITH CHECK ((SELECT auth.role()) = 'service_role');
+
+COMMENT ON POLICY pr_stage_data_service_role_only ON pr_stage_data IS
+  'Service role only (extended with participant access in migration 12)';
+
+-- =============================================
+-- 3. pr_state_log (MEDIUM - P2)
+-- =============================================
+ALTER TABLE pr_state_log ENABLE ROW LEVEL SECURITY;
+
+-- Basic policy: Only service role can access (will be extended in migration 12)
+CREATE POLICY pr_state_log_service_role_only ON pr_state_log
+  FOR ALL
+  USING ((SELECT auth.role()) = 'service_role')
+  WITH CHECK ((SELECT auth.role()) = 'service_role');
+
+COMMENT ON POLICY pr_state_log_service_role_only ON pr_state_log IS
+  'Service role only (extended with participant access in migration 12)';
+
+-- =============================================
+-- 4. pr_security_audit_log (MEDIUM - P2)
+-- =============================================
+ALTER TABLE pr_security_audit_log ENABLE ROW LEVEL SECURITY;
+
+-- Basic policy: Only service role can access (will be extended in migration 12)
+CREATE POLICY pr_security_audit_log_service_role_only ON pr_security_audit_log
+  FOR ALL
+  USING ((SELECT auth.role()) = 'service_role')
+  WITH CHECK ((SELECT auth.role()) = 'service_role');
+
+COMMENT ON POLICY pr_security_audit_log_service_role_only ON pr_security_audit_log IS
+  'Service role only (extended with participant access in migration 12)';
+
+-- =============================================
+-- 6. pr_templates (LOW - P3)
+-- =============================================
+ALTER TABLE pr_templates ENABLE ROW LEVEL SECURITY;
+
+-- Templates are readable by all authenticated users (public reference data)
+CREATE POLICY pr_templates_select_authenticated ON pr_templates
+  FOR SELECT
+  USING (
+    (SELECT auth.role()) IN ('authenticated', 'service_role')
+  );
+
+-- Only service role can modify templates
+CREATE POLICY pr_templates_modify_service_role_only ON pr_templates
+  FOR ALL
+  USING ((SELECT auth.role()) = 'service_role')
+  WITH CHECK ((SELECT auth.role()) = 'service_role');
+
+COMMENT ON POLICY pr_templates_select_authenticated ON pr_templates IS
+  'Templates are public reference data readable by all authenticated users';
+
+-- =============================================
+-- 7. pr_template_ranks (LOW - P3)
+-- =============================================
+ALTER TABLE pr_template_ranks ENABLE ROW LEVEL SECURITY;
+
+-- Template ranks are readable by all authenticated users (public reference data)
+CREATE POLICY pr_template_ranks_select_authenticated ON pr_template_ranks
+  FOR SELECT
+  USING (
+    (SELECT auth.role()) IN ('authenticated', 'service_role')
+  );
+
+-- Only service role can modify template ranks
+CREATE POLICY pr_template_ranks_modify_service_role_only ON pr_template_ranks
+  FOR ALL
+  USING ((SELECT auth.role()) = 'service_role')
+  WITH CHECK ((SELECT auth.role()) = 'service_role');
+
+COMMENT ON POLICY pr_template_ranks_select_authenticated ON pr_template_ranks IS
+  'Template ranks are public reference data readable by all authenticated users';
+
+-- =============================================
+-- 8. pr_state_transitions (LOW - P3)
+-- =============================================
+ALTER TABLE pr_state_transitions ENABLE ROW LEVEL SECURITY;
+
+-- State transitions are readable by all authenticated users (public reference data)
+CREATE POLICY pr_state_transitions_select_authenticated ON pr_state_transitions
+  FOR SELECT
+  USING (
+    (SELECT auth.role()) IN ('authenticated', 'service_role')
+  );
+
+-- Only service role can modify state transitions
+CREATE POLICY pr_state_transitions_modify_service_role_only ON pr_state_transitions
+  FOR ALL
+  USING ((SELECT auth.role()) = 'service_role')
+  WITH CHECK ((SELECT auth.role()) = 'service_role');
+
+COMMENT ON POLICY pr_state_transitions_select_authenticated ON pr_state_transitions IS
+  'State transitions are public reference data readable by all authenticated users';

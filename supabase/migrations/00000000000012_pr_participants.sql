@@ -298,4 +298,182 @@ CREATE POLICY paper_contributors_select_own_or_participant_or_service ON paper_c
       AND pap.user_id = (SELECT auth_user_id())
     ) OR
     (SELECT auth.role()) = 'service_role'
-  ); 
+  );
+
+-- =============================================
+-- RLS POLICIES FOR pr_reviewer_teams
+-- =============================================
+-- Resolves security warning: SECURITY DEFINER views (reviewer_completed_activities, user_review_activities)
+-- Access pattern: Reviewers see own memberships, activity participants see all reviewers in their activity
+-- Used by: /api/reviewer/completed-activities, /api/profile/stats
+
+ALTER TABLE pr_reviewer_teams ENABLE ROW LEVEL SECURITY;
+
+-- Reviewers can see their own team memberships
+-- Activity participants can see all reviewers in their activity
+CREATE POLICY pr_reviewer_teams_select_own_or_participant ON pr_reviewer_teams
+  FOR SELECT
+  USING (
+    user_id = (SELECT auth_user_id()) OR
+    -- Activity participants can see all reviewers in their activity
+    EXISTS (
+      SELECT 1 FROM pr_activity_permissions pap
+      WHERE pap.activity_id = pr_reviewer_teams.activity_id
+      AND pap.user_id = (SELECT auth_user_id())
+    ) OR
+    (SELECT auth.role()) = 'service_role'
+  );
+
+-- Only service role can modify reviewer teams (managed by join workflow)
+CREATE POLICY pr_reviewer_teams_insert_service_role_only ON pr_reviewer_teams
+  FOR INSERT
+  WITH CHECK ((SELECT auth.role()) = 'service_role');
+
+CREATE POLICY pr_reviewer_teams_update_service_role_only ON pr_reviewer_teams
+  FOR UPDATE
+  USING ((SELECT auth.role()) = 'service_role')
+  WITH CHECK ((SELECT auth.role()) = 'service_role');
+
+CREATE POLICY pr_reviewer_teams_delete_service_role_only ON pr_reviewer_teams
+  FOR DELETE
+  USING ((SELECT auth.role()) = 'service_role');
+
+COMMENT ON POLICY pr_reviewer_teams_select_own_or_participant ON pr_reviewer_teams IS
+  'Reviewers see own memberships, activity participants see all reviewers in their activities';
+
+-- =============================================
+-- EXTEND file_storage RLS POLICY
+-- =============================================
+-- Now that pr_activity_permissions exists, extend file_storage SELECT policy
+-- to include activity participant access
+
+DROP POLICY IF EXISTS file_storage_select_own_or_public ON file_storage;
+
+CREATE POLICY file_storage_select_own_or_participant_or_public ON file_storage
+  FOR SELECT
+  USING (
+    uploaded_by = (SELECT auth_user_id()) OR
+    is_public = true OR
+    EXISTS (
+      SELECT 1 FROM pr_activity_permissions pap
+      WHERE pap.activity_id = file_storage.related_activity_id
+      AND pap.user_id = (SELECT auth_user_id())
+    ) OR
+    (SELECT auth.role()) = 'service_role'
+  );
+
+COMMENT ON POLICY file_storage_select_own_or_participant_or_public ON file_storage IS
+  'Users see files they uploaded, public files, or files in activities they participate in';
+
+-- =============================================
+-- EXTEND CORE PR TABLE RLS POLICIES
+-- =============================================
+-- Now that pr_activity_permissions exists, extend policies from migration 10
+-- to include activity participant access
+
+-- 1. Extend pr_activities SELECT policy
+DROP POLICY IF EXISTS pr_activities_select_creator_or_public ON pr_activities;
+
+CREATE POLICY pr_activities_select_participant_or_public ON pr_activities
+  FOR SELECT
+  USING (
+    creator_id = (SELECT auth_user_id()) OR
+    EXISTS (
+      SELECT 1 FROM pr_activity_permissions pap
+      WHERE pap.activity_id = pr_activities.activity_id
+      AND pap.user_id = (SELECT auth_user_id())
+    ) OR
+    current_state = 'published_on_ps' OR
+    (SELECT auth.role()) = 'service_role'
+  );
+
+COMMENT ON POLICY pr_activities_select_participant_or_public ON pr_activities IS
+  'Users see activities they created/participate in, or public (published_on_ps) activities';
+
+-- 2. Extend pr_stage_data policy
+DROP POLICY IF EXISTS pr_stage_data_service_role_only ON pr_stage_data;
+
+CREATE POLICY pr_stage_data_select_participant ON pr_stage_data
+  FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM pr_activity_permissions pap
+      WHERE pap.activity_id = pr_stage_data.activity_id
+      AND pap.user_id = (SELECT auth_user_id())
+    ) OR
+    (SELECT auth.role()) = 'service_role'
+  );
+
+CREATE POLICY pr_stage_data_modify_service_role_only ON pr_stage_data
+  FOR ALL
+  USING ((SELECT auth.role()) = 'service_role')
+  WITH CHECK ((SELECT auth.role()) = 'service_role');
+
+COMMENT ON POLICY pr_stage_data_select_participant ON pr_stage_data IS
+  'Activity participants can see stage data for their activities';
+
+-- 3. Extend pr_state_log policy
+DROP POLICY IF EXISTS pr_state_log_service_role_only ON pr_state_log;
+
+CREATE POLICY pr_state_log_select_participant ON pr_state_log
+  FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM pr_activity_permissions pap
+      WHERE pap.activity_id = pr_state_log.activity_id
+      AND pap.user_id = (SELECT auth_user_id())
+    ) OR
+    (SELECT auth.role()) = 'service_role'
+  );
+
+CREATE POLICY pr_state_log_modify_service_role_only ON pr_state_log
+  FOR ALL
+  USING ((SELECT auth.role()) = 'service_role')
+  WITH CHECK ((SELECT auth.role()) = 'service_role');
+
+COMMENT ON POLICY pr_state_log_select_participant ON pr_state_log IS
+  'Activity participants can see state logs for their activities';
+
+-- 4. Extend pr_processing_log policy
+DROP POLICY IF EXISTS pr_processing_log_service_role_only ON pr_processing_log;
+
+CREATE POLICY pr_processing_log_select_participant ON pr_processing_log
+  FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM pr_activity_permissions pap
+      WHERE pap.activity_id = pr_processing_log.activity_id
+      AND pap.user_id = (SELECT auth_user_id())
+    ) OR
+    (SELECT auth.role()) = 'service_role'
+  );
+
+CREATE POLICY pr_processing_log_modify_service_role_only ON pr_processing_log
+  FOR ALL
+  USING ((SELECT auth.role()) = 'service_role')
+  WITH CHECK ((SELECT auth.role()) = 'service_role');
+
+COMMENT ON POLICY pr_processing_log_select_participant ON pr_processing_log IS
+  'Activity participants can see processing logs for their activities';
+
+-- 5. Extend pr_security_audit_log policy
+DROP POLICY IF EXISTS pr_security_audit_log_service_role_only ON pr_security_audit_log;
+
+CREATE POLICY pr_security_audit_log_select_participant ON pr_security_audit_log
+  FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM pr_activity_permissions pap
+      WHERE pap.activity_id = pr_security_audit_log.activity_id
+      AND pap.user_id = (SELECT auth_user_id())
+    ) OR
+    (SELECT auth.role()) = 'service_role'
+  );
+
+CREATE POLICY pr_security_audit_log_modify_service_role_only ON pr_security_audit_log
+  FOR ALL
+  USING ((SELECT auth.role()) = 'service_role')
+  WITH CHECK ((SELECT auth.role()) = 'service_role');
+
+COMMENT ON POLICY pr_security_audit_log_select_participant ON pr_security_audit_log IS
+  'Activity participants can see security audit logs for their activities'; 
