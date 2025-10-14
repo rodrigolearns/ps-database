@@ -192,4 +192,137 @@ CREATE TRIGGER update_authors_updated_at
 CREATE TRIGGER update_paper_contributors_updated_at
   BEFORE UPDATE ON paper_contributors
   FOR EACH ROW
-  EXECUTE FUNCTION set_updated_at(); 
+  EXECUTE FUNCTION set_updated_at();
+
+-- =============================================
+-- ROW LEVEL SECURITY POLICIES
+-- =============================================
+-- Protect paper data based on ownership and activity participation
+-- Note: Papers RLS is defined HERE, not in 00000000000010_pr_core.sql
+
+-- Enable RLS on papers
+ALTER TABLE papers ENABLE ROW LEVEL SECURITY;
+
+-- Users can read papers they uploaded or are contributors to
+-- Service role can read all papers (used by admin API routes)
+-- Note: Activity participant access will be added in a later migration after pr_activity_permissions table exists
+CREATE POLICY papers_select_own_or_contributor_or_service ON papers
+  FOR SELECT
+  USING (
+    uploaded_by = auth_user_id() OR
+    EXISTS (
+      SELECT 1 FROM public.paper_contributors pc
+      WHERE pc.paper_id = papers.paper_id
+      AND pc.user_id = auth_user_id()
+    ) OR
+    auth.role() = 'service_role'
+  );
+
+-- Users can insert papers they are uploading
+CREATE POLICY papers_insert_own_or_service ON papers
+  FOR INSERT
+  WITH CHECK (
+    uploaded_by = auth_user_id() OR
+    auth.role() = 'service_role'
+  );
+
+-- Users can update papers they uploaded or are corresponding author on
+CREATE POLICY papers_update_own_or_corresponding_or_service ON papers
+  FOR UPDATE
+  USING (
+    uploaded_by = auth_user_id() OR
+    EXISTS (
+      SELECT 1 FROM public.paper_contributors pc
+      WHERE pc.paper_id = papers.paper_id
+      AND pc.user_id = auth_user_id()
+      AND pc.is_corresponding = true
+    ) OR
+    auth.role() = 'service_role'
+  );
+
+-- Enable RLS on paper_contributors
+ALTER TABLE paper_contributors ENABLE ROW LEVEL SECURITY;
+
+-- Users can read contributors for papers they own or are contributors to
+-- Following DEVELOPMENT_PRINCIPLES.md: No recursion - use direct column checks
+-- Note: Activity participant access will be added in migration 00000000000012 after pr_activity_permissions exists
+CREATE POLICY paper_contributors_select_own_or_service ON paper_contributors
+  FOR SELECT
+  USING (
+    -- Direct check: User is a contributor on this paper (no subquery on same table)
+    user_id = auth_user_id() OR
+    -- User owns the paper (check papers table directly, not its policy)
+    EXISTS (
+      SELECT 1 FROM public.papers p
+      WHERE p.paper_id = paper_contributors.paper_id
+      AND p.uploaded_by = auth_user_id()
+    ) OR
+    auth.role() = 'service_role'
+  );
+
+-- Users can insert contributors when creating their own paper
+-- Safe: only checks papers table ownership, doesn't trigger papers policy
+CREATE POLICY paper_contributors_insert_own_paper_or_service ON paper_contributors
+  FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.papers p
+      WHERE p.paper_id = paper_contributors.paper_id
+      AND p.uploaded_by = auth_user_id()
+    ) OR
+    auth.role() = 'service_role'
+  );
+
+-- Corresponding authors can update contributors
+-- Following DEVELOPMENT_PRINCIPLES.md: Direct column checks only (no self-reference)
+CREATE POLICY paper_contributors_update_corresponding_or_service ON paper_contributors
+  FOR UPDATE
+  USING (
+    -- Direct check: Current row is for this user AND they are corresponding author
+    -- This is safe because we're checking columns on the CURRENT ROW, not querying the table
+    (user_id = auth_user_id() AND is_corresponding = true) OR
+    -- Or user owns the paper
+    EXISTS (
+      SELECT 1 FROM public.papers p
+      WHERE p.paper_id = paper_contributors.paper_id
+      AND p.uploaded_by = auth_user_id()
+    ) OR
+    auth.role() = 'service_role'
+  );
+
+-- Enable RLS on paper_versions
+ALTER TABLE paper_versions ENABLE ROW LEVEL SECURITY;
+
+-- Users can read versions for papers they have access to
+CREATE POLICY paper_versions_select_with_paper_access_or_service ON paper_versions
+  FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.papers p
+      WHERE p.paper_id = paper_versions.paper_id
+    ) OR
+    auth.role() = 'service_role'
+  );
+
+-- Only service role can insert new versions (via API)
+CREATE POLICY paper_versions_insert_service_role_only ON paper_versions
+  FOR INSERT
+  WITH CHECK (auth.role() = 'service_role');
+
+-- Enable RLS on legacy tables for backward compatibility
+ALTER TABLE authors ENABLE ROW LEVEL SECURITY;
+ALTER TABLE paper_authors ENABLE ROW LEVEL SECURITY;
+
+-- Legacy tables: allow read for anyone with paper access
+CREATE POLICY authors_select_all ON authors
+  FOR SELECT
+  USING (true);
+
+CREATE POLICY paper_authors_select_with_paper_access ON paper_authors
+  FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM papers p
+      WHERE p.paper_id = paper_authors.paper_id
+    )
+  ); 

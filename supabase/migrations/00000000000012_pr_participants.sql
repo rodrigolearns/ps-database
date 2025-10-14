@@ -156,38 +156,46 @@ CREATE TRIGGER update_pr_reviewer_teams_updated_at
 ALTER TABLE pr_activity_permissions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pr_timeline_events ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Anyone can view activity permissions"
+CREATE POLICY "Authenticated users can view activity permissions"
   ON pr_activity_permissions FOR SELECT
+  TO authenticated
   USING (true);
 
-CREATE POLICY "Service operations can insert activity permissions"
+CREATE POLICY "Authenticated users can insert activity permissions"
   ON pr_activity_permissions FOR INSERT
+  TO authenticated
   WITH CHECK (true);
 
-CREATE POLICY "Service operations can update activity permissions"
+CREATE POLICY "Authenticated users can update activity permissions"
   ON pr_activity_permissions FOR UPDATE
+  TO authenticated
   USING (true)
   WITH CHECK (true);
 
-CREATE POLICY "Service operations can delete activity permissions"
+CREATE POLICY "Authenticated users can delete activity permissions"
   ON pr_activity_permissions FOR DELETE
+  TO authenticated
   USING (true);
 
-CREATE POLICY "Anyone can view timeline events"
+CREATE POLICY "Authenticated users can view timeline events"
   ON pr_timeline_events FOR SELECT
+  TO authenticated
   USING (true);
 
-CREATE POLICY "Service operations can insert timeline events"
+CREATE POLICY "Authenticated users can insert timeline events"
   ON pr_timeline_events FOR INSERT
+  TO authenticated
   WITH CHECK (true);
 
-CREATE POLICY "Service operations can update timeline events"
+CREATE POLICY "Authenticated users can update timeline events"
   ON pr_timeline_events FOR UPDATE
+  TO authenticated
   USING (true)
   WITH CHECK (true);
 
-CREATE POLICY "Service operations can delete timeline events"
+CREATE POLICY "Authenticated users can delete timeline events"
   ON pr_timeline_events FOR DELETE
+  TO authenticated
   USING (true);
 
 -- Data migration: Populate pr_activity_permissions from existing data
@@ -218,4 +226,76 @@ ON CONFLICT (activity_id, user_id) DO NOTHING;
 -- Grant permissions
 GRANT SELECT ON pr_activity_permissions TO authenticated;
 GRANT SELECT ON pr_timeline_events TO authenticated;
-GRANT SELECT, INSERT, UPDATE ON pr_reviewer_teams TO authenticated; 
+GRANT SELECT, INSERT, UPDATE ON pr_reviewer_teams TO authenticated;
+
+-- =============================================
+-- HELPER FUNCTION TO CHECK IF USER IS PAPER CONTRIBUTOR
+-- =============================================
+-- This function bypasses RLS to check if a user is a contributor on a paper
+-- Following DEVELOPMENT_PRINCIPLES.md: Prevents infinite recursion
+-- This is safe because:
+-- 1. It only checks for the authenticated user (auth.uid())
+-- 2. It's read-only
+-- 3. It prevents papers<->paper_contributors circular dependency
+CREATE OR REPLACE FUNCTION is_paper_contributor(p_paper_id INTEGER)
+RETURNS BOOLEAN
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = ''
+STABLE
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.paper_contributors pc
+    WHERE pc.paper_id = p_paper_id
+    AND pc.user_id = (SELECT user_id FROM public.user_accounts WHERE auth_id = auth.uid())
+  );
+$$;
+
+COMMENT ON FUNCTION is_paper_contributor(INTEGER) IS 'Checks if current user is a contributor on the given paper. Uses SECURITY DEFINER to bypass RLS and prevent infinite recursion between papers and paper_contributors policies.';
+
+-- =============================================
+-- EXTEND PAPER RLS POLICIES
+-- =============================================
+-- Now that pr_activity_permissions exists, add activity participant access to papers and contributors
+
+-- Extend papers SELECT policy with activity participant access
+DROP POLICY IF EXISTS papers_select_own_or_contributor_or_service ON papers;
+
+CREATE POLICY papers_select_own_or_participant_or_service ON papers
+  FOR SELECT
+  USING (
+    uploaded_by = auth_user_id() OR
+    -- Use helper function to avoid recursion (doesn't trigger paper_contributors policy)
+    is_paper_contributor(paper_id) OR
+    EXISTS (
+      SELECT 1 FROM public.pr_activity_permissions pap
+      JOIN public.pr_activities pa ON pa.activity_id = pap.activity_id
+      WHERE pa.paper_id = papers.paper_id
+      AND pap.user_id = auth_user_id()
+    ) OR
+    auth.role() = 'service_role'
+  );
+
+-- Extend paper_contributors SELECT policy with activity participant access
+DROP POLICY IF EXISTS paper_contributors_select_own_or_service ON paper_contributors;
+
+CREATE POLICY paper_contributors_select_own_or_participant_or_service ON paper_contributors
+  FOR SELECT
+  USING (
+    -- Direct check: User is a contributor on this paper (no subquery on same table)
+    user_id = auth_user_id() OR
+    -- User owns the paper (check papers table directly, not its policy)
+    EXISTS (
+      SELECT 1 FROM public.papers p
+      WHERE p.paper_id = paper_contributors.paper_id
+      AND p.uploaded_by = auth_user_id()
+    ) OR
+    -- User has activity permission (now safe - pr_activity_permissions exists)
+    EXISTS (
+      SELECT 1 FROM public.pr_activity_permissions pap
+      JOIN public.pr_activities pa ON pa.activity_id = pap.activity_id
+      WHERE pa.paper_id = paper_contributors.paper_id
+      AND pap.user_id = auth_user_id()
+    ) OR
+    auth.role() = 'service_role'
+  ); 

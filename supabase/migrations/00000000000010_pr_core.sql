@@ -316,154 +316,18 @@ INSERT INTO pr_state_transitions(from_state, to_state) VALUES
 ON CONFLICT DO NOTHING;
 
 -- =============================================
--- Simplified RLS Policies
+-- RLS POLICIES MOVED TO PROPER MIGRATIONS
 -- =============================================
-
--- Papers table policies
-ALTER TABLE papers ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can view public papers"
-    ON papers FOR SELECT
-    USING (true);
-
-CREATE POLICY "Authenticated users can create papers"
-    ON papers FOR INSERT TO authenticated
-    WITH CHECK (
-        EXISTS (
-            SELECT 1 FROM user_accounts ua
-            WHERE ua.auth_id = (SELECT auth.uid())
-            AND ua.user_id = papers.uploaded_by
-        )
-    );
-
-CREATE POLICY "Paper creators can update their papers"
-    ON papers FOR UPDATE TO authenticated
-    USING (
-        EXISTS (
-            SELECT 1 FROM user_accounts ua
-            WHERE ua.auth_id = (SELECT auth.uid()) 
-            AND ua.user_id = papers.uploaded_by
-        )
-    );
-
--- PR Activities table policies
-ALTER TABLE pr_activities ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Anyone can view PR activities"
-    ON pr_activities FOR SELECT
-    USING (true);
-
-CREATE POLICY "Authenticated users can create PR activities"
-    ON pr_activities FOR INSERT TO authenticated
-    WITH CHECK (
-        EXISTS (
-            SELECT 1 FROM user_accounts ua
-            WHERE ua.auth_id = (SELECT auth.uid())
-            AND ua.user_id = pr_activities.creator_id
-        )
-    );
-
-CREATE POLICY "Activity creators can update their PR activities"
-    ON pr_activities FOR UPDATE TO authenticated
-    USING (
-        EXISTS (
-            SELECT 1 FROM user_accounts ua
-            WHERE ua.auth_id = (SELECT auth.uid())
-            AND ua.user_id = pr_activities.creator_id
-        )
-    );
-
--- Authors table policies
-ALTER TABLE authors ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Anyone can view authors"
-    ON authors FOR SELECT
-    USING (true);
-
-CREATE POLICY "Users can manage their own author profiles"
-    ON authors FOR INSERT TO authenticated
-    WITH CHECK (
-        EXISTS (
-            SELECT 1 FROM user_accounts ua
-            WHERE ua.auth_id = (SELECT auth.uid())
-            AND ua.user_id = authors.user_id
-        )
-    );
-
-CREATE POLICY "Users can update their own author profiles"
-    ON authors FOR UPDATE TO authenticated
-    USING (
-        EXISTS (
-            SELECT 1 FROM user_accounts ua
-            WHERE ua.auth_id = (SELECT auth.uid())
-            AND ua.user_id = authors.user_id
-        )
-    )
-    WITH CHECK (
-        EXISTS (
-            SELECT 1 FROM user_accounts ua
-            WHERE ua.auth_id = (SELECT auth.uid())
-            AND ua.user_id = authors.user_id
-        )
-    );
-
-CREATE POLICY "Users can delete their own author profiles"
-    ON authors FOR DELETE TO authenticated
-    USING (
-        EXISTS (
-            SELECT 1 FROM user_accounts ua
-            WHERE ua.auth_id = (SELECT auth.uid())
-            AND ua.user_id = authors.user_id
-        )
-    );
-
--- Paper Authors table policies
-ALTER TABLE paper_authors ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Anyone can view paper authors"
-    ON paper_authors FOR SELECT
-    USING (true);
-
-CREATE POLICY "Paper creators can add paper authors"
-    ON paper_authors FOR INSERT TO authenticated
-    WITH CHECK (
-        EXISTS (
-            SELECT 1 FROM papers p
-            JOIN user_accounts ua ON p.uploaded_by = ua.user_id
-            WHERE p.paper_id = paper_authors.paper_id
-            AND ua.auth_id = (SELECT auth.uid())
-        )
-    );
-
-CREATE POLICY "Paper creators can update paper authors"
-    ON paper_authors FOR UPDATE TO authenticated
-    USING (
-        EXISTS (
-            SELECT 1 FROM papers p
-            JOIN user_accounts ua ON p.uploaded_by = ua.user_id
-            WHERE p.paper_id = paper_authors.paper_id
-            AND ua.auth_id = (SELECT auth.uid())
-        )
-    )
-    WITH CHECK (
-        EXISTS (
-            SELECT 1 FROM papers p
-            JOIN user_accounts ua ON p.uploaded_by = ua.user_id
-            WHERE p.paper_id = paper_authors.paper_id
-            AND ua.auth_id = (SELECT auth.uid())
-        )
-    );
-
-CREATE POLICY "Paper creators can remove paper authors"
-    ON paper_authors FOR DELETE TO authenticated
-    USING (
-        EXISTS (
-            SELECT 1 FROM papers p
-            JOIN user_accounts ua ON p.uploaded_by = ua.user_id
-            WHERE p.paper_id = paper_authors.paper_id
-            AND ua.auth_id = (SELECT auth.uid())
-        )
-    );
+-- Following DEVELOPMENT_PRINCIPLES.md: Clean, Stale-Free Code
+-- RLS policies have been moved to their proper migration files:
+-- - papers: 00000000000004_papers.sql
+-- - paper_contributors: 00000000000004_papers.sql
+-- - authors: 00000000000004_papers.sql (legacy table)
+-- - pr_activities: Defined later in activity-specific migrations
+--
+-- This migration only defines core tables and state machine logic.
+-- No RLS policies defined here to avoid conflicts and maintain clean separation.
+-- All RLS policies for papers, authors, and paper_authors are in 00000000000004_papers.sql
 
 -- =============================================
 -- STAGE TRANSITION RULES REMOVED
@@ -542,7 +406,7 @@ CREATE OR REPLACE FUNCTION update_activity_state(
 ) RETURNS BOOLEAN 
 LANGUAGE plpgsql 
 SECURITY DEFINER
-SET search_path = 'public, pg_catalog'
+SET search_path = ''
 AS $$
 BEGIN
   -- Simple atomic update - no overengineering
@@ -585,3 +449,12 @@ ON pr_activities (activity_id, paper_id, template_id, creator_id, current_state)
 CREATE INDEX IF NOT EXISTS idx_pr_activities_basic_info_covering 
 ON pr_activities (activity_id) 
 INCLUDE (current_state, stage_deadline, posted_at, escrow_balance, activity_uuid, created_at, updated_at);
+
+-- =============================================
+-- FUNCTION PERMISSIONS
+-- =============================================
+-- State transition function handles critical workflow logic
+-- Only service role can execute this (via API routes with permission checks)
+
+REVOKE EXECUTE ON FUNCTION update_activity_state(INTEGER, activity_state, activity_state, INTEGER, TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION update_activity_state(INTEGER, activity_state, activity_state, INTEGER, TEXT) TO service_role;

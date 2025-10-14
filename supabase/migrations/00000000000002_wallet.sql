@@ -135,4 +135,46 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 CREATE TRIGGER create_wallet_for_new_user
   AFTER INSERT ON user_accounts
   FOR EACH ROW
-  EXECUTE FUNCTION initialize_user_wallet(); 
+  EXECUTE FUNCTION initialize_user_wallet();
+
+-- =============================================
+-- ROW LEVEL SECURITY POLICIES
+-- =============================================
+-- Protect wallet data: users can only access their own wallet
+-- Admins can view all wallets for monitoring
+
+-- Enable RLS on wallet_balances
+ALTER TABLE wallet_balances ENABLE ROW LEVEL SECURITY;
+
+-- Users can read their own wallet balance
+-- Service role can read all balances (used by admin API routes)
+CREATE POLICY wallet_balances_select_own_or_service ON wallet_balances
+  FOR SELECT
+  USING (
+    user_id = auth_user_id() OR
+    auth.role() = 'service_role'
+  );
+
+-- Only wallet functions can modify balances (via service role)
+-- Users cannot directly modify their balance
+CREATE POLICY wallet_balances_service_role_only ON wallet_balances
+  FOR ALL
+  USING (auth.role() = 'service_role')
+  WITH CHECK (auth.role() = 'service_role');
+
+-- Enable RLS on wallet_transactions
+ALTER TABLE wallet_transactions ENABLE ROW LEVEL SECURITY;
+
+-- Users can read their own transactions
+-- Service role can read all transactions (used by admin API routes)
+CREATE POLICY wallet_transactions_select_own_or_service ON wallet_transactions
+  FOR SELECT
+  USING (
+    user_id = auth_user_id() OR
+    auth.role() = 'service_role'
+  );
+
+-- Only service role can insert transactions (via wallet functions)
+CREATE POLICY wallet_transactions_insert_service_role_only ON wallet_transactions
+  FOR INSERT
+  WITH CHECK (auth.role() = 'service_role'); 

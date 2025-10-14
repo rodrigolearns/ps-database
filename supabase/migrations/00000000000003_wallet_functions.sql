@@ -513,7 +513,11 @@ CREATE OR REPLACE FUNCTION fund_activity_escrow(
   p_amount INTEGER,
   p_description TEXT DEFAULT 'Activity escrow funding'
 )
-RETURNS JSONB AS $$
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
 DECLARE
   v_user_balance INTEGER;
   v_activity_uuid UUID;
@@ -603,6 +607,30 @@ EXCEPTION
       'message', 'Error funding escrow: ' || SQLERRM
     );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = 'public';
+$$;
 
-COMMENT ON FUNCTION fund_activity_escrow(INTEGER, INTEGER, INTEGER, TEXT) IS 'Atomically transfer tokens from user wallet to activity escrow'; 
+COMMENT ON FUNCTION fund_activity_escrow(INTEGER, INTEGER, INTEGER, TEXT) IS 'Atomically transfer tokens from user wallet to activity escrow';
+
+-- =============================================
+-- FUNCTION PERMISSIONS
+-- =============================================
+-- Wallet functions handle sensitive financial operations
+-- Only service role can execute these (via API routes with permission checks)
+
+-- Revoke public execute permissions on sensitive wallet functions
+REVOKE EXECUTE ON FUNCTION superadmin_add_tokens(INTEGER, INTEGER, TEXT) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION superadmin_deduct_tokens(INTEGER, INTEGER, TEXT) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION activity_reward_tokens(INTEGER, INTEGER, INTEGER, UUID, TEXT) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION activity_deduct_tokens(INTEGER, INTEGER, INTEGER, UUID, TEXT) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION transfer_from_escrow_to_user(INTEGER, INTEGER, INTEGER, TEXT) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION transfer_escrow_to_superadmin(INTEGER, INTEGER, TEXT) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION fund_activity_escrow(INTEGER, INTEGER, INTEGER, TEXT) FROM PUBLIC;
+
+-- Grant execute only to service role
+GRANT EXECUTE ON FUNCTION superadmin_add_tokens(INTEGER, INTEGER, TEXT) TO service_role;
+GRANT EXECUTE ON FUNCTION superadmin_deduct_tokens(INTEGER, INTEGER, TEXT) TO service_role;
+GRANT EXECUTE ON FUNCTION activity_reward_tokens(INTEGER, INTEGER, INTEGER, UUID, TEXT) TO service_role;
+GRANT EXECUTE ON FUNCTION activity_deduct_tokens(INTEGER, INTEGER, INTEGER, UUID, TEXT) TO service_role;
+GRANT EXECUTE ON FUNCTION transfer_from_escrow_to_user(INTEGER, INTEGER, INTEGER, TEXT) TO service_role;
+GRANT EXECUTE ON FUNCTION transfer_escrow_to_superadmin(INTEGER, INTEGER, TEXT) TO service_role;
+GRANT EXECUTE ON FUNCTION fund_activity_escrow(INTEGER, INTEGER, INTEGER, TEXT) TO service_role; 

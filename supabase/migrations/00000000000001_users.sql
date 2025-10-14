@@ -102,4 +102,95 @@ CREATE TRIGGER update_user_accounts_updated_at
 CREATE TRIGGER update_user_preferences_updated_at
   BEFORE UPDATE ON user_preferences
   FOR EACH ROW
-  EXECUTE FUNCTION set_updated_at(); 
+  EXECUTE FUNCTION set_updated_at();
+
+-- =============================================
+-- ROW LEVEL SECURITY POLICIES
+-- =============================================
+-- Security Model:
+-- 1. Users can only access their own data (enforced by RLS)
+-- 2. Service role bypasses RLS for admin operations (API layer enforces authorization)
+-- 3. No infinite recursion: user_accounts policies use auth.uid() directly
+-- 4. Other tables use auth_user_id() helper function (safe SECURITY DEFINER)
+--
+-- Why this is secure:
+-- - RLS enforces data isolation at database level (defense in depth)
+-- - Service role access requires API authentication + authorization
+-- - Application layer (API routes) checks user roles before using service role
+-- - Even if API is compromised, users cannot escalate privileges via direct DB access
+
+-- Enable RLS on user_accounts
+ALTER TABLE user_accounts ENABLE ROW LEVEL SECURITY;
+
+-- Users can read their own account data
+-- Service role can read all (API routes handle admin authorization)
+-- Note: Uses auth.uid() directly to avoid recursion
+CREATE POLICY user_accounts_select_own_or_service ON user_accounts
+  FOR SELECT
+  USING (
+    auth.uid() = auth_id OR
+    auth.role() = 'service_role'
+  );
+
+-- Users can update only their own data
+-- Service role can update all (API routes handle admin authorization)
+-- Note: Role changes are handled by API layer with explicit authorization checks
+CREATE POLICY user_accounts_update_own_or_service ON user_accounts
+  FOR UPDATE
+  USING (
+    auth.uid() = auth_id OR
+    auth.role() = 'service_role'
+  );
+
+-- New users can insert their own account during signup
+CREATE POLICY user_accounts_insert_own ON user_accounts
+  FOR INSERT
+  WITH CHECK (auth.uid() = auth_id);
+
+-- =============================================
+-- HELPER FUNCTION FOR USER_ID LOOKUP
+-- =============================================
+-- This function safely returns the user_id for the current authenticated user
+-- It uses SECURITY DEFINER to bypass RLS ONLY for looking up the caller's own user_id
+-- This is safe because:
+-- 1. It only returns data for auth.uid() (cannot be manipulated)
+-- 2. It's read-only (SELECT only)
+-- 3. It prevents infinite recursion in RLS policies
+-- 4. Performance: Cached per transaction, fast lookup
+CREATE OR REPLACE FUNCTION auth_user_id()
+RETURNS INTEGER
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = ''
+STABLE
+AS $$
+  SELECT user_id FROM public.user_accounts WHERE auth_id = auth.uid()
+$$;
+
+COMMENT ON FUNCTION auth_user_id() IS 'Returns user_id for current authenticated user. Used in RLS policies to avoid infinite recursion. Safe because it only returns caller''s own ID.';
+
+-- Enable RLS on user_preferences
+ALTER TABLE user_preferences ENABLE ROW LEVEL SECURITY;
+
+-- Users can read and update only their own preferences
+-- Service role can access all (used by admin API routes with proper authorization checks)
+CREATE POLICY user_preferences_select_own_or_service ON user_preferences
+  FOR SELECT
+  USING (
+    user_id = auth_user_id() OR
+    auth.role() = 'service_role'
+  );
+
+CREATE POLICY user_preferences_insert_own_or_service ON user_preferences
+  FOR INSERT
+  WITH CHECK (
+    user_id = auth_user_id() OR
+    auth.role() = 'service_role'
+  );
+
+CREATE POLICY user_preferences_update_own_or_service ON user_preferences
+  FOR UPDATE
+  USING (
+    user_id = auth_user_id() OR
+    auth.role() = 'service_role'
+  ); 

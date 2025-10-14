@@ -152,7 +152,7 @@ BEGIN
   REFRESH MATERIALIZED VIEW CONCURRENTLY public.admin_activities_view;
   RAISE NOTICE 'Admin activities view refreshed at %', NOW();
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = 'public, pg_catalog';
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 -- Function to check if view needs refresh (for background refresh)
 CREATE OR REPLACE FUNCTION check_admin_view_staleness()
@@ -176,7 +176,7 @@ BEGIN
     last_activity,
     current_view_count;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = 'public, pg_catalog';
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 -- Function for manual refresh with detailed response
 CREATE OR REPLACE FUNCTION refresh_admin_activities_view_manual()
@@ -204,7 +204,7 @@ BEGIN
       0 as activities_count;
   END;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = 'public, pg_catalog';
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 -- Grant permissions
 GRANT SELECT ON admin_activities_view TO authenticated;

@@ -91,7 +91,7 @@ BEGIN
   -- Return true if activity was updated
   RETURN FOUND;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 COMMENT ON FUNCTION publish_to_paperstack_library(INTEGER, TEXT) IS 'Publishes a peer review activity to PaperStack Library with specified publication term';
 
@@ -122,7 +122,7 @@ BEGIN
   -- Return true if activity was updated
   RETURN FOUND;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 COMMENT ON FUNCTION submit_to_external_journal(INTEGER, TEXT, TEXT) IS 'Submits a peer review activity to an external journal';
 
@@ -143,7 +143,7 @@ BEGIN
   -- Return true if activity was updated
   RETURN FOUND;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 COMMENT ON FUNCTION make_activity_private(INTEGER) IS 'Makes a peer review activity private (not published anywhere)';
 
@@ -171,15 +171,22 @@ BEGIN
       RETURN FOUND;
   END CASE;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
 COMMENT ON FUNCTION set_publication_choice(INTEGER, TEXT) IS 'Sets the publication choice for a peer review activity (paperstack-library, external-journal, or private)';
 
--- Grant necessary permissions
-GRANT EXECUTE ON FUNCTION publish_to_paperstack_library(INTEGER, TEXT) TO authenticated;
-GRANT EXECUTE ON FUNCTION submit_to_external_journal(INTEGER, TEXT, TEXT) TO authenticated;
-GRANT EXECUTE ON FUNCTION make_activity_private(INTEGER) TO authenticated;
-GRANT EXECUTE ON FUNCTION set_publication_choice(INTEGER, TEXT) TO authenticated;
+-- Revoke public execute permissions for security
+-- These functions should only be called via API routes with proper permission checks
+REVOKE EXECUTE ON FUNCTION publish_to_paperstack_library(INTEGER, TEXT) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION submit_to_external_journal(INTEGER, TEXT, TEXT) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION make_activity_private(INTEGER) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION set_publication_choice(INTEGER, TEXT) FROM PUBLIC;
+
+-- Grant execute only to service role (used by API routes)
+GRANT EXECUTE ON FUNCTION publish_to_paperstack_library(INTEGER, TEXT) TO service_role;
+GRANT EXECUTE ON FUNCTION submit_to_external_journal(INTEGER, TEXT, TEXT) TO service_role;
+GRANT EXECUTE ON FUNCTION make_activity_private(INTEGER) TO service_role;
+GRANT EXECUTE ON FUNCTION set_publication_choice(INTEGER, TEXT) TO service_role;
 
 -- Add comments to new columns
 COMMENT ON COLUMN pr_activities.completion_status IS 'Final completion status of the activity after publication choice';
