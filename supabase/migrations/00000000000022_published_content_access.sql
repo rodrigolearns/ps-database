@@ -4,6 +4,7 @@
 -- =============================================
 
 -- Update RLS policy for pr_review_submissions to allow access to published activities
+-- Note: Wraps auth functions in SELECT for performance
 DROP POLICY IF EXISTS "review_submissions_access" ON pr_review_submissions;
 CREATE POLICY "review_submissions_simple" ON pr_review_submissions
   FOR ALL TO authenticated
@@ -11,7 +12,7 @@ CREATE POLICY "review_submissions_simple" ON pr_review_submissions
     -- Admin and superadmin users can see all content
     EXISTS (
       SELECT 1 FROM user_accounts ua
-      WHERE ua.auth_id = auth.uid()
+      WHERE ua.auth_id = (SELECT auth.uid())
       AND ua.role IN ('admin', 'superadmin')
     )
     OR
@@ -19,19 +20,19 @@ CREATE POLICY "review_submissions_simple" ON pr_review_submissions
     EXISTS (
       SELECT 1 FROM pr_reviewer_teams prt
       WHERE prt.activity_id = pr_review_submissions.activity_id
-      AND prt.user_id = (SELECT user_id FROM user_accounts WHERE auth_id = auth.uid())
+      AND prt.user_id = (SELECT user_id FROM user_accounts WHERE auth_id = (SELECT auth.uid()))
     )
     OR
     -- Authors can see reviews in their activities  
     EXISTS (
       SELECT 1 FROM pr_activities pa
       WHERE pa.activity_id = pr_review_submissions.activity_id
-      AND pa.creator_id = (SELECT user_id FROM user_accounts WHERE auth_id = auth.uid())
+      AND pa.creator_id = (SELECT user_id FROM user_accounts WHERE auth_id = (SELECT auth.uid()))
     )
   )
   WITH CHECK (
     -- You can only write reviews under your own name
-    reviewer_id = (SELECT user_id FROM user_accounts WHERE auth_id = auth.uid())
+    reviewer_id = (SELECT user_id FROM user_accounts WHERE auth_id = (SELECT auth.uid()))
     AND
     -- You must be a reviewer in this activity
     EXISTS (

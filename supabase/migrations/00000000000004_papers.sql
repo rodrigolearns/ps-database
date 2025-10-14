@@ -222,22 +222,22 @@ CREATE POLICY papers_select_own_or_contributor_or_service ON papers
 CREATE POLICY papers_insert_own_or_service ON papers
   FOR INSERT
   WITH CHECK (
-    uploaded_by = auth_user_id() OR
-    auth.role() = 'service_role'
+    uploaded_by = (SELECT auth_user_id()) OR
+    (SELECT auth.role()) = 'service_role'
   );
 
 -- Users can update papers they uploaded or are corresponding author on
 CREATE POLICY papers_update_own_or_corresponding_or_service ON papers
   FOR UPDATE
   USING (
-    uploaded_by = auth_user_id() OR
+    uploaded_by = (SELECT auth_user_id()) OR
     EXISTS (
       SELECT 1 FROM public.paper_contributors pc
       WHERE pc.paper_id = papers.paper_id
-      AND pc.user_id = auth_user_id()
+      AND pc.user_id = (SELECT auth_user_id())
       AND pc.is_corresponding = true
     ) OR
-    auth.role() = 'service_role'
+    (SELECT auth.role()) = 'service_role'
   );
 
 -- Enable RLS on paper_contributors
@@ -268,9 +268,9 @@ CREATE POLICY paper_contributors_insert_own_paper_or_service ON paper_contributo
     EXISTS (
       SELECT 1 FROM public.papers p
       WHERE p.paper_id = paper_contributors.paper_id
-      AND p.uploaded_by = auth_user_id()
+      AND p.uploaded_by = (SELECT auth_user_id())
     ) OR
-    auth.role() = 'service_role'
+    (SELECT auth.role()) = 'service_role'
   );
 
 -- Corresponding authors can update contributors
@@ -280,14 +280,14 @@ CREATE POLICY paper_contributors_update_corresponding_or_service ON paper_contri
   USING (
     -- Direct check: Current row is for this user AND they are corresponding author
     -- This is safe because we're checking columns on the CURRENT ROW, not querying the table
-    (user_id = auth_user_id() AND is_corresponding = true) OR
+    (user_id = (SELECT auth_user_id()) AND is_corresponding = true) OR
     -- Or user owns the paper
     EXISTS (
       SELECT 1 FROM public.papers p
       WHERE p.paper_id = paper_contributors.paper_id
-      AND p.uploaded_by = auth_user_id()
+      AND p.uploaded_by = (SELECT auth_user_id())
     ) OR
-    auth.role() = 'service_role'
+    (SELECT auth.role()) = 'service_role'
   );
 
 -- Enable RLS on paper_versions
@@ -301,13 +301,13 @@ CREATE POLICY paper_versions_select_with_paper_access_or_service ON paper_versio
       SELECT 1 FROM public.papers p
       WHERE p.paper_id = paper_versions.paper_id
     ) OR
-    auth.role() = 'service_role'
+    (SELECT auth.role()) = 'service_role'
   );
 
 -- Only service role can insert new versions (via API)
 CREATE POLICY paper_versions_insert_service_role_only ON paper_versions
   FOR INSERT
-  WITH CHECK (auth.role() = 'service_role');
+  WITH CHECK ((SELECT auth.role()) = 'service_role');
 
 -- Enable RLS on legacy tables for backward compatibility
 ALTER TABLE authors ENABLE ROW LEVEL SECURITY;

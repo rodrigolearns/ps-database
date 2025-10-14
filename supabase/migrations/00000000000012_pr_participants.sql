@@ -264,16 +264,16 @@ DROP POLICY IF EXISTS papers_select_own_or_contributor_or_service ON papers;
 CREATE POLICY papers_select_own_or_participant_or_service ON papers
   FOR SELECT
   USING (
-    uploaded_by = auth_user_id() OR
+    uploaded_by = (SELECT auth_user_id()) OR
     -- Use helper function to avoid recursion (doesn't trigger paper_contributors policy)
-    is_paper_contributor(paper_id) OR
+    (SELECT is_paper_contributor(paper_id)) OR
     EXISTS (
       SELECT 1 FROM public.pr_activity_permissions pap
       JOIN public.pr_activities pa ON pa.activity_id = pap.activity_id
       WHERE pa.paper_id = papers.paper_id
-      AND pap.user_id = auth_user_id()
+      AND pap.user_id = (SELECT auth_user_id())
     ) OR
-    auth.role() = 'service_role'
+    (SELECT auth.role()) = 'service_role'
   );
 
 -- Extend paper_contributors SELECT policy with activity participant access
@@ -283,19 +283,19 @@ CREATE POLICY paper_contributors_select_own_or_participant_or_service ON paper_c
   FOR SELECT
   USING (
     -- Direct check: User is a contributor on this paper (no subquery on same table)
-    user_id = auth_user_id() OR
+    user_id = (SELECT auth_user_id()) OR
     -- User owns the paper (check papers table directly, not its policy)
     EXISTS (
       SELECT 1 FROM public.papers p
       WHERE p.paper_id = paper_contributors.paper_id
-      AND p.uploaded_by = auth_user_id()
+      AND p.uploaded_by = (SELECT auth_user_id())
     ) OR
     -- User has activity permission (now safe - pr_activity_permissions exists)
     EXISTS (
       SELECT 1 FROM public.pr_activity_permissions pap
       JOIN public.pr_activities pa ON pa.activity_id = pap.activity_id
       WHERE pa.paper_id = paper_contributors.paper_id
-      AND pap.user_id = auth_user_id()
+      AND pap.user_id = (SELECT auth_user_id())
     ) OR
-    auth.role() = 'service_role'
+    (SELECT auth.role()) = 'service_role'
   ); 

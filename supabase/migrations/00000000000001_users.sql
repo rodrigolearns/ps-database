@@ -124,12 +124,12 @@ ALTER TABLE user_accounts ENABLE ROW LEVEL SECURITY;
 
 -- Users can read their own account data
 -- Service role can read all (API routes handle admin authorization)
--- Note: Uses auth.uid() directly to avoid recursion
+-- Note: Wraps auth functions in SELECT for performance (prevents re-evaluation per row)
 CREATE POLICY user_accounts_select_own_or_service ON user_accounts
   FOR SELECT
   USING (
-    auth.uid() = auth_id OR
-    auth.role() = 'service_role'
+    (SELECT auth.uid()) = auth_id OR
+    (SELECT auth.role()) = 'service_role'
   );
 
 -- Users can update only their own data
@@ -138,14 +138,14 @@ CREATE POLICY user_accounts_select_own_or_service ON user_accounts
 CREATE POLICY user_accounts_update_own_or_service ON user_accounts
   FOR UPDATE
   USING (
-    auth.uid() = auth_id OR
-    auth.role() = 'service_role'
+    (SELECT auth.uid()) = auth_id OR
+    (SELECT auth.role()) = 'service_role'
   );
 
 -- New users can insert their own account during signup
 CREATE POLICY user_accounts_insert_own ON user_accounts
   FOR INSERT
-  WITH CHECK (auth.uid() = auth_id);
+  WITH CHECK ((SELECT auth.uid()) = auth_id);
 
 -- =============================================
 -- HELPER FUNCTION FOR USER_ID LOOKUP
@@ -174,23 +174,24 @@ ALTER TABLE user_preferences ENABLE ROW LEVEL SECURITY;
 
 -- Users can read and update only their own preferences
 -- Service role can access all (used by admin API routes with proper authorization checks)
+-- Note: Wraps auth functions in SELECT for performance
 CREATE POLICY user_preferences_select_own_or_service ON user_preferences
   FOR SELECT
   USING (
-    user_id = auth_user_id() OR
-    auth.role() = 'service_role'
+    user_id = (SELECT auth_user_id()) OR
+    (SELECT auth.role()) = 'service_role'
   );
 
 CREATE POLICY user_preferences_insert_own_or_service ON user_preferences
   FOR INSERT
   WITH CHECK (
-    user_id = auth_user_id() OR
-    auth.role() = 'service_role'
+    user_id = (SELECT auth_user_id()) OR
+    (SELECT auth.role()) = 'service_role'
   );
 
 CREATE POLICY user_preferences_update_own_or_service ON user_preferences
   FOR UPDATE
   USING (
-    user_id = auth_user_id() OR
-    auth.role() = 'service_role'
+    user_id = (SELECT auth_user_id()) OR
+    (SELECT auth.role()) = 'service_role'
   ); 

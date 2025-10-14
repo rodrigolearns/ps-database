@@ -15,11 +15,6 @@ WHERE escrow_balance > 0;
 CREATE INDEX idx_pr_reviewer_teams_user_lookup 
 ON pr_reviewer_teams (user_id, activity_id);
 
--- Index for counting reviewers per activity
--- Optimizes checking if reviewer team is full
-CREATE INDEX idx_pr_reviewer_teams_activity_count 
-ON pr_reviewer_teams (activity_id);
-
 -- Index for paper author exclusion lookups
 -- Optimizes checking if user is an author of the paper
 CREATE INDEX idx_paper_contributors_user_lookup 

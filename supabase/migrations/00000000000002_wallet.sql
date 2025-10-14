@@ -146,35 +146,46 @@ CREATE TRIGGER create_wallet_for_new_user
 -- Enable RLS on wallet_balances
 ALTER TABLE wallet_balances ENABLE ROW LEVEL SECURITY;
 
--- Users can read their own wallet balance
--- Service role can read all balances (used by admin API routes)
-CREATE POLICY wallet_balances_select_own_or_service ON wallet_balances
+-- Users can read their own wallet balance, service role can read/modify all
+-- Note: Consolidated SELECT policies for performance (avoids multiple policy evaluation)
+-- Note: Wraps auth functions in SELECT for performance
+CREATE POLICY wallet_balances_select_unified ON wallet_balances
   FOR SELECT
   USING (
-    user_id = auth_user_id() OR
-    auth.role() = 'service_role'
+    user_id = (SELECT auth_user_id()) OR
+    (SELECT auth.role()) = 'service_role'
   );
 
 -- Only wallet functions can modify balances (via service role)
 -- Users cannot directly modify their balance
-CREATE POLICY wallet_balances_service_role_only ON wallet_balances
-  FOR ALL
-  USING (auth.role() = 'service_role')
-  WITH CHECK (auth.role() = 'service_role');
+-- Note: Using INSERT/UPDATE/DELETE (not ALL) to avoid overlapping with SELECT policy
+CREATE POLICY wallet_balances_insert_service_role_only ON wallet_balances
+  FOR INSERT
+  WITH CHECK ((SELECT auth.role()) = 'service_role');
+
+CREATE POLICY wallet_balances_update_service_role_only ON wallet_balances
+  FOR UPDATE
+  USING ((SELECT auth.role()) = 'service_role')
+  WITH CHECK ((SELECT auth.role()) = 'service_role');
+
+CREATE POLICY wallet_balances_delete_service_role_only ON wallet_balances
+  FOR DELETE
+  USING ((SELECT auth.role()) = 'service_role');
 
 -- Enable RLS on wallet_transactions
 ALTER TABLE wallet_transactions ENABLE ROW LEVEL SECURITY;
 
 -- Users can read their own transactions
 -- Service role can read all transactions (used by admin API routes)
+-- Note: Wraps auth functions in SELECT for performance
 CREATE POLICY wallet_transactions_select_own_or_service ON wallet_transactions
   FOR SELECT
   USING (
-    user_id = auth_user_id() OR
-    auth.role() = 'service_role'
+    user_id = (SELECT auth_user_id()) OR
+    (SELECT auth.role()) = 'service_role'
   );
 
 -- Only service role can insert transactions (via wallet functions)
 CREATE POLICY wallet_transactions_insert_service_role_only ON wallet_transactions
   FOR INSERT
-  WITH CHECK (auth.role() = 'service_role'); 
+  WITH CHECK ((SELECT auth.role()) = 'service_role'); 
