@@ -26,6 +26,23 @@
 -- =============================================
 
 -- =============================================
+-- ACTIVITY TYPE ENUM (for journal club support)
+-- =============================================
+-- Create activity_type enum to distinguish standard PR from journal club
+-- This is needed by progression functions below
+DO $$ BEGIN
+  CREATE TYPE activity_type AS ENUM ('standard', 'journal_club');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+COMMENT ON TYPE activity_type IS 'Type of peer review activity: standard (token-based, automatic) or journal_club (free, manual)';
+
+-- Add activity_type column to pr_activities (defaults to 'standard' for existing activities)
+ALTER TABLE pr_activities 
+ADD COLUMN IF NOT EXISTS activity_type activity_type NOT NULL DEFAULT 'standard';
+
+COMMENT ON COLUMN pr_activities.activity_type IS 'Type of activity: standard (token-based, automatic) or journal_club (free, manual)';
+
+-- =============================================
 -- FUNCTION: submit_review_and_check_progression
 -- =============================================
 -- Atomically submit a review, update reviewer status, and check if activity should progress
@@ -44,7 +61,26 @@ DECLARE
   v_current_state activity_state;
   v_should_progress BOOLEAN := false;
   v_next_state activity_state;
+  v_activity_type activity_type;
 BEGIN
+  -- Check if this is a journal club (manual progression only)
+  SELECT activity_type INTO v_activity_type
+  FROM pr_activities
+  WHERE activity_id = p_activity_id;
+  
+  IF v_activity_type = 'journal_club' THEN
+    -- Journal clubs use manual progression - never auto-progress
+    RETURN jsonb_build_object(
+      'review_id', NULL,
+      'should_progress', false,
+      'current_state', NULL,
+      'next_state', NULL,
+      'locked_in_count', NULL,
+      'required_count', NULL,
+      'message', 'Journal club activities use manual progression'
+    );
+  END IF;
+  
   -- Get current activity state and required reviewer count
   SELECT pa.current_state, pt.reviewer_count
   INTO v_current_state, v_required_count
@@ -139,7 +175,24 @@ DECLARE
   v_review_rounds INTEGER;
   v_should_progress BOOLEAN := false;
   v_next_state activity_state;
+  v_activity_type activity_type;
 BEGIN
+  -- Check if this is a journal club (manual progression only)
+  SELECT activity_type INTO v_activity_type
+  FROM pr_activities
+  WHERE activity_id = p_activity_id;
+  
+  IF v_activity_type = 'journal_club' THEN
+    -- Journal clubs use manual progression - never auto-progress
+    RETURN jsonb_build_object(
+      'response_id', NULL,
+      'should_progress', false,
+      'current_state', NULL,
+      'next_state', NULL,
+      'message', 'Journal club activities use manual progression'
+    );
+  END IF;
+  
   -- Get current activity state and template info
   SELECT pa.current_state, pt.review_rounds
   INTO v_current_state, v_review_rounds
