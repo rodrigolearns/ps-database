@@ -1,5 +1,5 @@
 -- =============================================
--- 00000000000001_users.sql
+-- 00000000000001_user.sql
 -- User Domain: Accounts and Preferences
 -- =============================================
 
@@ -9,12 +9,9 @@ DO $$ BEGIN
 EXCEPTION
   WHEN duplicate_object THEN NULL;
 END $$;
-
 COMMENT ON TYPE user_role IS 'Roles for users in the system';
 
--- =============================================
--- User Accounts Table
--- =============================================
+-- User accounts table
 CREATE TABLE IF NOT EXISTS user_accounts (
   user_id SERIAL PRIMARY KEY,
   auth_id UUID UNIQUE,
@@ -60,9 +57,7 @@ COMMENT ON COLUMN user_accounts.updated_at IS 'When the user account was last up
 COMMENT ON COLUMN user_accounts.last_login IS 'When the user last logged in';
 COMMENT ON COLUMN user_accounts.search_vector IS 'Full-text search vector combining username and full_name';
 
--- =============================================
--- User Preferences Table
--- =============================================
+-- User preference embeddings table
 CREATE TABLE IF NOT EXISTS user_preferences (
   preference_id SERIAL PRIMARY KEY,
   user_id INTEGER REFERENCES user_accounts(user_id) ON DELETE CASCADE,
@@ -79,23 +74,26 @@ COMMENT ON COLUMN user_preferences.preference_vector IS 'Vector embedding of use
 COMMENT ON COLUMN user_preferences.created_at IS 'When the preference was created';
 COMMENT ON COLUMN user_preferences.updated_at IS 'When the preference was last updated';
 
--- =============================================
 -- Indexes
--- =============================================
 CREATE INDEX IF NOT EXISTS idx_user_accounts_auth_id ON user_accounts (auth_id);
 CREATE INDEX IF NOT EXISTS idx_user_accounts_email ON user_accounts (email);
 CREATE INDEX IF NOT EXISTS idx_user_accounts_username ON user_accounts (username);
 CREATE INDEX IF NOT EXISTS idx_user_accounts_search ON user_accounts USING GIN (search_vector);
 CREATE INDEX IF NOT EXISTS idx_user_preferences_user_id ON user_preferences (user_id);
 
--- Covering index for user account lookups (optimizes JOINs in activity queries)
+-- =============================================
+-- PERFORMANCE OPTIMIZATION INDEXES - PR Activity Page
+-- =============================================
+-- Following DEVELOPMENT_PRINCIPLES.md: Database as Source of Truth for performance
+-- Indexes optimized for the main PR activity data loading JOIN operations
+
+-- Covering index for user account lookups (most frequently joined table)
+-- This avoids table lookup for the most common user account fields needed in JOINs
 CREATE INDEX IF NOT EXISTS idx_user_accounts_covering_basic
 ON user_accounts (user_id)
 INCLUDE (username, full_name, profile_image_url, auth_id, email);
 
--- =============================================
 -- Triggers
--- =============================================
 CREATE TRIGGER update_user_accounts_updated_at
   BEFORE UPDATE ON user_accounts
   FOR EACH ROW
@@ -107,41 +105,26 @@ CREATE TRIGGER update_user_preferences_updated_at
   EXECUTE FUNCTION set_updated_at();
 
 -- =============================================
--- Helper Function for User ID Lookup
--- =============================================
--- Returns user_id for current authenticated user
--- Uses SECURITY DEFINER to bypass RLS safely
--- This is safe because:
--- 1. Only returns data for auth.uid() (cannot be manipulated)
--- 2. Read-only (SELECT only)
--- 3. Prevents infinite recursion in RLS policies
--- 4. Performance: Cached per transaction
-CREATE OR REPLACE FUNCTION auth_user_id()
-RETURNS INTEGER
-LANGUAGE sql
-SECURITY DEFINER
-SET search_path = ''
-STABLE
-AS $$
-  SELECT user_id FROM public.user_accounts WHERE auth_id = auth.uid()
-$$;
-
-COMMENT ON FUNCTION auth_user_id() IS 'Returns user_id for current authenticated user. Used in RLS policies to avoid infinite recursion. Safe because it only returns caller''s own ID.';
-
--- =============================================
--- Row Level Security Policies
+-- ROW LEVEL SECURITY POLICIES
 -- =============================================
 -- Security Model:
--- 1. Users can only access their own data
--- 2. Service role bypasses RLS for admin operations
+-- 1. Users can only access their own data (enforced by RLS)
+-- 2. Service role bypasses RLS for admin operations (API layer enforces authorization)
 -- 3. No infinite recursion: user_accounts policies use auth.uid() directly
--- 4. Other tables use auth_user_id() helper function
+-- 4. Other tables use auth_user_id() helper function (safe SECURITY DEFINER)
+--
+-- Why this is secure:
+-- - RLS enforces data isolation at database level (defense in depth)
+-- - Service role access requires API authentication + authorization
+-- - Application layer (API routes) checks user roles before using service role
+-- - Even if API is compromised, users cannot escalate privileges via direct DB access
 
 -- Enable RLS on user_accounts
 ALTER TABLE user_accounts ENABLE ROW LEVEL SECURITY;
 
--- Users can read their own account or any account (public profiles)
--- Service role can read all
+-- Users can read their own account data
+-- Service role can read all (API routes handle admin authorization)
+-- Note: Wraps auth functions in SELECT for performance (prevents re-evaluation per row)
 CREATE POLICY user_accounts_select_own_or_service ON user_accounts
   FOR SELECT
   USING (
@@ -150,7 +133,8 @@ CREATE POLICY user_accounts_select_own_or_service ON user_accounts
   );
 
 -- Users can update only their own data
--- Service role can update all (API handles authorization for role changes)
+-- Service role can update all (API routes handle admin authorization)
+-- Note: Role changes are handled by API layer with explicit authorization checks
 CREATE POLICY user_accounts_update_own_or_service ON user_accounts
   FOR UPDATE
   USING (
@@ -163,11 +147,34 @@ CREATE POLICY user_accounts_insert_own ON user_accounts
   FOR INSERT
   WITH CHECK ((SELECT auth.uid()) = auth_id);
 
+-- =============================================
+-- HELPER FUNCTION FOR USER_ID LOOKUP
+-- =============================================
+-- This function safely returns the user_id for the current authenticated user
+-- It uses SECURITY DEFINER to bypass RLS ONLY for looking up the caller's own user_id
+-- This is safe because:
+-- 1. It only returns data for auth.uid() (cannot be manipulated)
+-- 2. It's read-only (SELECT only)
+-- 3. It prevents infinite recursion in RLS policies
+-- 4. Performance: Cached per transaction, fast lookup
+CREATE OR REPLACE FUNCTION auth_user_id()
+RETURNS INTEGER
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = ''
+STABLE
+AS $$
+  SELECT user_id FROM public.user_accounts WHERE auth_id = auth.uid()
+$$;
+
+COMMENT ON FUNCTION auth_user_id() IS 'Returns user_id for current authenticated user. Used in RLS policies to avoid infinite recursion. Safe because it only returns caller''s own ID.';
+
 -- Enable RLS on user_preferences
 ALTER TABLE user_preferences ENABLE ROW LEVEL SECURITY;
 
 -- Users can read and update only their own preferences
--- Service role can access all
+-- Service role can access all (used by admin API routes with proper authorization checks)
+-- Note: Wraps auth functions in SELECT for performance
 CREATE POLICY user_preferences_select_own_or_service ON user_preferences
   FOR SELECT
   USING (
@@ -187,5 +194,4 @@ CREATE POLICY user_preferences_update_own_or_service ON user_preferences
   USING (
     user_id = (SELECT auth_user_id()) OR
     (SELECT auth.role()) = 'service_role'
-  );
-
+  ); 

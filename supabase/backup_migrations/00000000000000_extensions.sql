@@ -1,6 +1,6 @@
 -- =============================================
 -- 00000000000000_extensions.sql
--- PostgreSQL Extensions and Utility Functions
+-- Extensions and Utility Functions
 -- =============================================
 
 -- Create dedicated schema for extensions
@@ -18,11 +18,7 @@ GRANT EXECUTE ON FUNCTION extensions.uuid_generate_v4() TO authenticated;
 -- Enable Row Level Security by default
 ALTER DEFAULT PRIVILEGES REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
 
--- =============================================
--- Generic Utility Functions
--- =============================================
-
--- Generic trigger function for updating timestamps
+-- Generic utility function for updating timestamps
 CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -31,5 +27,4 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = '';
 
-COMMENT ON FUNCTION set_updated_at() IS 'Generic trigger function to update updated_at timestamp';
-
+COMMENT ON FUNCTION set_updated_at() IS 'Generic trigger function to update updated_at timestamp'; 
