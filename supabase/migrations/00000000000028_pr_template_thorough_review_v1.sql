@@ -6,21 +6,23 @@
 -- Workflow: review_1 → author_resp_1 → review_2 → assessment → awarding → publication_choice
 
 -- 1. Create template record
-INSERT INTO pr_templates (name, description, reviewer_count, total_tokens, extra_tokens, is_public, display_order)
+INSERT INTO pr_templates (name, user_facing_name, description, reviewer_count, total_tokens, insurance_tokens, is_public, display_order)
 VALUES (
   'thorough_review_2_rounds_4_reviewers_20_tokens_v1',
-  'Thorough Review: 2 review rounds with author responses, 4 reviewers, 20 tokens total. In-depth evaluation for complex papers.',
+  'Thorough Review',  -- User-facing display name
+  '2 review rounds with author responses, 4 reviewers, 20 tokens. In-depth evaluation for complex papers.',
   4,    -- reviewer_count
   20,   -- total_tokens
-  2,    -- extra_tokens (for top performers)
+  2,    -- insurance_tokens (10% = 2 tokens)
   true,  -- is_public
   2     -- display_order
 )
 ON CONFLICT (name) DO UPDATE
-  SET description = EXCLUDED.description,
+  SET user_facing_name = EXCLUDED.user_facing_name,
+      description = EXCLUDED.description,
       reviewer_count = EXCLUDED.reviewer_count,
       total_tokens = EXCLUDED.total_tokens,
-      extra_tokens = EXCLUDED.extra_tokens,
+      insurance_tokens = EXCLUDED.insurance_tokens,
       is_public = EXCLUDED.is_public,
       display_order = EXCLUDED.display_order,
       updated_at = NOW();
@@ -41,7 +43,8 @@ SELECT
 FROM pr_templates t,
 LATERAL (
   VALUES
-    ('review_1', 'review_round_1', 1, 3, 'Round 1: Initial Review', true, false),
+    ('posted', 'posted', 0, NULL, 'Posted on Feed', true, false),
+    ('review_1', 'review_round_1', 1, 3, 'Round 1: Initial Review', false, false),
     ('author_resp_1', 'author_response_round_1', 2, 14, 'Author Response to Round 1', false, false),
     ('review_2', 'review_round_2', 3, 14, 'Round 2: Revision Review', false, false),
     ('assessment', 'collaborative_assessment', 4, 3, 'Consensus Assessment', false, false),
@@ -65,6 +68,9 @@ SELECT
 FROM pr_templates t,
 LATERAL (
   VALUES
+    -- posted → review_1 (when first review submitted)
+    ('posted', 'review_1', '{"type": "first_review_submitted", "config": {"round_number": 1}}', true, 1),
+    
     -- review_1 → author_resp_1 (when all round 1 reviews submitted)
     ('review_1', 'author_resp_1', '{"type": "all_reviews_submitted", "config": {"round_number": 1}}', true, 1),
     
@@ -83,15 +89,18 @@ LATERAL (
 WHERE t.name = 'thorough_review_2_rounds_4_reviewers_20_tokens_v1';
 
 -- 4. Define token ranks (1st through 4th place)
+-- Distribution: 20 tokens total - 2 insurance = 18 tokens for reviewers
+-- Top-heavy approach: 1st gets 39%, 2nd gets 28%, 3rd gets 22%, 4th gets 11%
 INSERT INTO pr_template_ranks (template_id, rank_position, tokens)
 SELECT t.template_id, rank_position, tokens
 FROM pr_templates t,
 LATERAL (
   VALUES
-    (1, 6),  -- 1st place: 6 tokens
-    (2, 5),  -- 2nd place: 5 tokens
-    (3, 5),  -- 3rd place: 5 tokens
-    (4, 4)   -- 4th place: 4 tokens
+    (1, 7),  -- 1st place: 7 tokens (39%)
+    (2, 5),  -- 2nd place: 5 tokens (28%)
+    (3, 4),  -- 3rd place: 4 tokens (22%)
+    (4, 2)   -- 4th place: 2 tokens (11%)
+           -- Insurance: 2 tokens  (10%) - stored in template
 ) AS ranks(rank_position, tokens)
 WHERE t.name = 'thorough_review_2_rounds_4_reviewers_20_tokens_v1'
 ON CONFLICT (template_id, rank_position) DO UPDATE

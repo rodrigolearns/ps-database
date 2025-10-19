@@ -9,13 +9,14 @@
 -- =============================================
 CREATE TABLE IF NOT EXISTS pr_templates (
   template_id SERIAL PRIMARY KEY,
-  name TEXT UNIQUE NOT NULL,
+  name TEXT UNIQUE NOT NULL,  -- Internal identifier: quick_review_1_round_3_reviewers_10_tokens_v1
+  user_facing_name TEXT NOT NULL,  -- Display name: "Quick Review"
   description TEXT,
   
   -- Basic configuration
   reviewer_count INTEGER NOT NULL,
   total_tokens INTEGER NOT NULL,
-  extra_tokens INTEGER NOT NULL DEFAULT 2,
+  insurance_tokens INTEGER NOT NULL,  -- Tokens reserved for platform insurance (typically 10%)
   
   -- Template metadata
   is_active BOOLEAN DEFAULT true,
@@ -28,11 +29,12 @@ CREATE TABLE IF NOT EXISTS pr_templates (
 
 COMMENT ON TABLE pr_templates IS 'Templates for PR activities (workflow graphs defined in template_stage_graph)';
 COMMENT ON COLUMN pr_templates.template_id IS 'Primary key for the template';
-COMMENT ON COLUMN pr_templates.name IS 'Template name (format: {pace}_review_{X}_rounds_{Y}_reviewers_{Z}_tokens_v{N})';
+COMMENT ON COLUMN pr_templates.name IS 'Internal template identifier (format: {pace}_review_{X}_rounds_{Y}_reviewers_{Z}_tokens_v{N})';
+COMMENT ON COLUMN pr_templates.user_facing_name IS 'Display name shown to users (e.g., "Quick Review", "Thorough Review")';
 COMMENT ON COLUMN pr_templates.description IS 'User-facing description of the template';
 COMMENT ON COLUMN pr_templates.reviewer_count IS 'Number of reviewers required';
-COMMENT ON COLUMN pr_templates.total_tokens IS 'Total tokens for distribution';
-COMMENT ON COLUMN pr_templates.extra_tokens IS 'Extra tokens for top performers';
+COMMENT ON COLUMN pr_templates.total_tokens IS 'Total tokens for distribution (including insurance)';
+COMMENT ON COLUMN pr_templates.insurance_tokens IS 'Tokens reserved for platform insurance/conflict resolution (~10% of total)';
 COMMENT ON COLUMN pr_templates.is_active IS 'Whether template is active';
 COMMENT ON COLUMN pr_templates.is_public IS 'Whether users can select this template';
 COMMENT ON COLUMN pr_templates.display_order IS 'Order in template selection UI';
@@ -172,4 +174,102 @@ CREATE POLICY pr_activities_delete_service_role_only ON pr_activities
 
 COMMENT ON POLICY pr_activities_select_creator_or_service ON pr_activities IS
   'Users see activities they created (participant access added in migration 21)';
+
+-- =============================================
+-- Helper Functions
+-- =============================================
+
+-- Function: Create PR activity with initial stage setup
+CREATE OR REPLACE FUNCTION create_pr_activity(
+  p_paper_id INTEGER,
+  p_creator_id INTEGER,
+  p_template_id INTEGER,
+  p_funding_amount INTEGER
+) RETURNS JSONB AS $$
+DECLARE
+  v_activity_id INTEGER;
+  v_activity_uuid UUID;
+  v_initial_stage_key TEXT;
+  v_timeline_event_id INTEGER;
+BEGIN
+  -- 1. Get initial stage key from template
+  SELECT stage_key INTO v_initial_stage_key
+  FROM template_stage_graph
+  WHERE template_id = p_template_id
+    AND activity_type = 'pr-activity'
+    AND is_initial_stage = true
+  LIMIT 1;
+  
+  IF v_initial_stage_key IS NULL THEN
+    RAISE EXCEPTION 'Template % has no initial stage defined', p_template_id;
+  END IF;
+  
+  -- 2. Insert activity
+  INSERT INTO pr_activities (
+    paper_id,
+    creator_id,
+    template_id,
+    funding_amount,
+    escrow_balance,
+    posted_at
+  )
+  VALUES (
+    p_paper_id,
+    p_creator_id,
+    p_template_id,
+    p_funding_amount,
+    p_funding_amount,  -- Initial escrow equals funding
+    NOW()
+  )
+  RETURNING activity_id, activity_uuid INTO v_activity_id, v_activity_uuid;
+  
+  -- 3. Initialize stage state (posted stage has no deadline)
+  INSERT INTO activity_stage_state (
+    activity_type,
+    activity_id,
+    current_stage_key,
+    stage_entered_at,
+    stage_deadline
+  )
+  VALUES (
+    'pr-activity',
+    v_activity_id,
+    v_initial_stage_key,
+    NOW(),
+    NULL  -- Posted stage has no deadline
+  );
+  
+  -- 4. Create initial timeline event
+  INSERT INTO pr_timeline_events (
+    activity_id,
+    event_type,
+    stage_key,
+    user_id,
+    title,
+    description
+  )
+  VALUES (
+    v_activity_id,
+    'activity_created',
+    v_initial_stage_key,
+    p_creator_id,
+    'Activity Created',
+    'Peer review activity posted on feed'
+  )
+  RETURNING event_id INTO v_timeline_event_id;
+  
+  -- 5. Return result
+  RETURN jsonb_build_object(
+    'activity_id', v_activity_id,
+    'activity_uuid', v_activity_uuid,
+    'initial_stage_key', v_initial_stage_key,
+    'timeline_event_id', v_timeline_event_id
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
+
+COMMENT ON FUNCTION create_pr_activity IS 'Atomically creates PR activity with initial stage state and timeline event';
+
+-- Grant permissions
+GRANT EXECUTE ON FUNCTION create_pr_activity TO authenticated;
 

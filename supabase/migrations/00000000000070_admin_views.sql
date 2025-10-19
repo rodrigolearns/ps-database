@@ -48,7 +48,7 @@ SELECT
   NULL::integer as funding_amount,
   NULL::integer as escrow_balance,
   NULL::text as template_name,
-  (SELECT COUNT(*) FROM jc_reviewers WHERE activity_id = jca.activity_id) as reviewer_count
+  (SELECT COUNT(*) FROM jc_participants WHERE activity_id = jca.activity_id) as reviewer_count
 FROM jc_activities jca
 JOIN papers p ON jca.paper_id = p.paper_id
 LEFT JOIN user_accounts ua ON jca.creator_id = ua.user_id
@@ -71,8 +71,8 @@ SELECT
   (SELECT COUNT(DISTINCT activity_id) FROM pr_reviewers WHERE user_id = ua.user_id) as pr_activities_as_reviewer,
   -- JC activities created
   (SELECT COUNT(*) FROM jc_activities WHERE creator_id = ua.user_id) as jc_activities_created,
-  -- JC activities as reviewer
-  (SELECT COUNT(DISTINCT activity_id) FROM jc_reviewers WHERE user_id = ua.user_id) as jc_activities_as_reviewer,
+  -- JC activities as participant
+  (SELECT COUNT(DISTINCT activity_id) FROM jc_participants WHERE user_id = ua.user_id) as jc_activities_as_participant,
   -- Wallet balance
   wb.balance as wallet_balance
 FROM user_accounts ua

@@ -94,6 +94,37 @@ COMMENT ON FUNCTION eval_condition_expression IS 'Recursively evaluates conditio
 -- 2. PR Activity Condition Evaluators
 -- =============================================
 
+-- Condition: First review submitted (triggers posted → review_1)
+CREATE OR REPLACE FUNCTION eval_first_review_submitted(
+  p_activity_id INTEGER,
+  p_activity_type TEXT,
+  p_stage_key TEXT,
+  p_condition_config JSONB
+) RETURNS BOOLEAN AS $$
+DECLARE
+  v_round_number INTEGER;
+  v_review_count INTEGER;
+BEGIN
+  -- Extract config (round_number optional, defaults to 1)
+  v_round_number := COALESCE((p_condition_config->>'round_number')::INTEGER, 1);
+  
+  -- Count reviews for this round (activity-type specific)
+  IF p_activity_type = 'pr-activity' THEN
+    SELECT COUNT(*) INTO v_review_count
+    FROM pr_review_submissions
+    WHERE activity_id = p_activity_id 
+      AND round_number = v_round_number;
+  ELSE
+    RETURN false;
+  END IF;
+  
+  -- Return true if at least one review exists
+  RETURN v_review_count >= 1;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
+
+COMMENT ON FUNCTION eval_first_review_submitted IS 'Evaluates whether at least one review has been submitted (triggers posted → review_1)';
+
 -- Condition: Minimum reviewers locked in
 CREATE OR REPLACE FUNCTION eval_min_reviewers_locked_in(
   p_activity_id INTEGER,
@@ -217,9 +248,9 @@ BEGIN
     WHERE activity_id = p_activity_id
       AND is_finalized = true;
   ELSIF p_activity_type = 'jc-activity' THEN
-    -- For JC, check if all reviewers finalized
+    -- For JC, check if all participants finalized
     SELECT COUNT(*) INTO v_required_count
-    FROM jc_reviewers
+    FROM jc_participants
     WHERE activity_id = p_activity_id;
     
     SELECT COUNT(*) INTO v_finalized_count

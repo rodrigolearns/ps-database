@@ -38,17 +38,17 @@ BEGIN
     p.title as paper_title,
     ass.current_stage_key,
     jca.created_at,
-    COUNT(DISTINCT jr.user_id) as reviewer_count,
+    COUNT(DISTINCT jp.user_id) as participant_count,
     (jca.creator_id = p_user_id) as is_creator
   FROM jc_activities jca
   JOIN papers p ON jca.paper_id = p.paper_id
   LEFT JOIN activity_stage_state ass ON ass.activity_id = jca.activity_id AND ass.activity_type = 'jc-activity'
-  LEFT JOIN jc_reviewers jr ON jca.activity_id = jr.activity_id
+  LEFT JOIN jc_participants jp ON jca.activity_id = jp.activity_id
   WHERE jca.creator_id = p_user_id OR
     EXISTS (
-      SELECT 1 FROM jc_reviewers jr2
-      WHERE jr2.activity_id = jca.activity_id
-      AND jr2.user_id = p_user_id
+      SELECT 1 FROM jc_participants jp2
+      WHERE jp2.activity_id = jca.activity_id
+      AND jp2.user_id = p_user_id
     )
   GROUP BY jca.activity_id, jca.activity_uuid, p.title, ass.current_stage_key, jca.created_at, jca.creator_id
   ORDER BY jca.created_at DESC;

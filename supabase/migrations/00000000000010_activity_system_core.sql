@@ -18,7 +18,6 @@ CREATE TABLE IF NOT EXISTS activity_type_registry (
   -- UI configuration
   route_prefix TEXT NOT NULL,  -- '/pr-activity', '/jc-activity'
   icon_name TEXT,
-  color_scheme TEXT,  -- 'blue', 'purple', 'green'
   
   -- Token economics
   token_cost INTEGER NOT NULL DEFAULT 0,  -- 0 = free, >0 = cost in tokens
@@ -40,10 +39,10 @@ COMMENT ON COLUMN activity_type_registry.supports_deadlines IS 'Whether this act
 COMMENT ON COLUMN activity_type_registry.supports_templates IS 'Whether this activity type uses template/workflow system';
 
 -- Seed activity types
-INSERT INTO activity_type_registry (type_code, display_name, description, route_prefix, color_scheme, token_cost, supports_deadlines, supports_templates)
+INSERT INTO activity_type_registry (type_code, display_name, description, route_prefix, token_cost, supports_deadlines, supports_templates)
 VALUES 
-  ('pr-activity', 'Peer Review Activity', 'Token-based peer review with automatic progression and deadlines', '/pr-activity', 'blue', 10, true, true),
-  ('jc-activity', 'Journal Club', 'Free collaborative review with manual progression (no deadlines, invitation-only)', '/jc-activity', 'purple', 0, false, false);
+  ('pr-activity', 'Peer Review Activity', 'Token-based peer review with automatic progression and deadlines', '/pr-activity', 10, true, true),
+  ('jc-activity', 'Journal Club', 'Free collaborative review with manual progression (invitation-only)', '/jc-activity', 0, false, true);
 
 -- =============================================
 -- 2. Stage Type Registry
@@ -63,9 +62,6 @@ CREATE TABLE IF NOT EXISTS stage_types (
   -- Data storage
   data_tables TEXT[],  -- Tables this stage uses: ['pr_review_submissions', 'pr_reviewers']
   
-  -- Default configuration
-  default_config JSONB DEFAULT '{}',
-  
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -74,75 +70,73 @@ COMMENT ON COLUMN stage_types.stage_type_code IS 'Unique identifier (explicit pe
 COMMENT ON COLUMN stage_types.activity_type IS 'Which activity type this stage belongs to';
 COMMENT ON COLUMN stage_types.ui_component_name IS 'React component name (one component per stage type)';
 COMMENT ON COLUMN stage_types.data_tables IS 'Database tables this stage interacts with';
-COMMENT ON COLUMN stage_types.default_config IS 'Default configuration (includes round_number, behavior flags)';
 
 -- Seed PR activity stage types
 -- NOTE: Each round is a separate stage type (DB is source of truth, copy-paste over complexity)
-INSERT INTO stage_types (stage_type_code, activity_type, display_name, description, ui_component_name, data_tables, default_config)
+-- NOTE: No default_config - all configuration lives in template_stage_graph or application layer
+INSERT INTO stage_types (stage_type_code, activity_type, display_name, description, ui_component_name, data_tables)
 VALUES 
+  -- Posted stage (seeking reviewers on feed)
+  ('posted', 'pr-activity', 'Posted on Feed', 'Activity posted on feed, seeking reviewers to join', 
+   'PostedOnFeedView', 
+   ARRAY['pr_reviewers']),
+   
   -- Review rounds (separate type per round)
   ('review_round_1', 'pr-activity', 'Review Round 1', 'Initial review: reviewers submit independent evaluations', 
    'ReviewSubmissionFormRound1', 
-   ARRAY['pr_review_submissions', 'pr_reviewers'],
-   '{"round_number": 1, "requires_all_reviewers": true}'::jsonb),
+   ARRAY['pr_review_submissions', 'pr_reviewers']),
    
   ('review_round_2', 'pr-activity', 'Review Round 2', 'Second review: reviewers evaluate author revisions',
    'ReviewSubmissionFormRound2',
-   ARRAY['pr_review_submissions', 'pr_reviewers'],
-   '{"round_number": 2, "requires_all_reviewers": true}'::jsonb),
+   ARRAY['pr_review_submissions', 'pr_reviewers']),
    
   ('review_round_3', 'pr-activity', 'Review Round 3', 'Third review: final evaluation round',
    'ReviewSubmissionFormRound3',
-   ARRAY['pr_review_submissions', 'pr_reviewers'],
-   '{"round_number": 3, "requires_all_reviewers": true}'::jsonb),
+   ARRAY['pr_review_submissions', 'pr_reviewers']),
    
   -- Author responses (separate type per round)
   ('author_response_round_1', 'pr-activity', 'Author Response Round 1', 'Author responds to initial reviewer feedback',
    'AuthorResponseFormRound1',
-   ARRAY['pr_author_responses'],
-   '{"round_number": 1, "allows_revision_upload": true}'::jsonb),
+   ARRAY['pr_author_responses']),
    
   ('author_response_round_2', 'pr-activity', 'Author Response Round 2', 'Author responds to second round feedback',
    'AuthorResponseFormRound2',
-   ARRAY['pr_author_responses'],
-   '{"round_number": 2, "allows_revision_upload": true}'::jsonb),
+   ARRAY['pr_author_responses']),
    
   -- Collaborative assessment (single instance)
   ('collaborative_assessment', 'pr-activity', 'Collaborative Assessment', 'Reviewers write consensus assessment together (Etherpad)',
    'CollaborativeAssessmentForm',
-   ARRAY['pr_assessments', 'pr_finalization_status'],
-   '{"editor_type": "etherpad", "requires_finalization": true}'::jsonb),
+   ARRAY['pr_assessments', 'pr_finalization_status']),
    
   -- Award distribution (single instance)
   ('award_distribution', 'pr-activity', 'Award Distribution', 'All participants distribute recognition awards',
    'AwardDistributionForm',
-   ARRAY['pr_award_distributions', 'pr_award_distribution_status'],
-   '{"requires_all_participants": true}'::jsonb),
+   ARRAY['pr_award_distributions', 'pr_award_distribution_status']),
    
   -- Publication choice (single instance)
   ('publication_choice', 'pr-activity', 'Publication Choice', 'Author chooses publication path',
    'PublicationChoiceForm',
-   ARRAY['pr_publication_choices'],
-   '{"options": ["published_on_ps", "submitted_externally", "made_private"]}'::jsonb);
+   ARRAY['pr_publication_choices']);
 
 -- Seed JC activity stage types
--- JC activities don't have round variants (manual progression, simpler workflow)
-INSERT INTO stage_types (stage_type_code, activity_type, display_name, description, ui_component_name, data_tables, default_config)
+-- JC activities use templates like PR but with manual progression
+INSERT INTO stage_types (stage_type_code, activity_type, display_name, description, ui_component_name, data_tables)
 VALUES 
-  ('jc_review', 'jc-activity', 'Journal Club Review', 'Participants submit reviews (no deadlines, manual progression)',
+  ('jc_created', 'jc-activity', 'Journal Club Created', 'Creator sends invitations, participants join',
+   'JCCreatedView',
+   ARRAY['jc_invitations', 'jc_participants']),
+   
+  ('jc_review', 'jc-activity', 'Journal Club Review', 'Participants submit reviews (manual progression)',
    'JCReviewSubmissionForm',
-   ARRAY['jc_review_submissions', 'jc_reviewers'],
-   '{"has_deadline": false, "is_manual": true}'::jsonb),
+   ARRAY['jc_review_submissions', 'jc_participants']),
    
   ('jc_assessment', 'jc-activity', 'Journal Club Assessment', 'Collaborative discussion and consensus (manual progression)',
    'JCCollaborativeAssessmentForm',
-   ARRAY['jc_assessments', 'jc_finalization_status'],
-   '{"editor_type": "etherpad", "is_manual": true}'::jsonb),
+   ARRAY['jc_assessments', 'jc_finalization_status']),
    
   ('jc_awarding', 'jc-activity', 'Journal Club Awarding', 'Recognition awards (no tokens, manual progression)',
    'JCAwardDistributionForm',
-   ARRAY['jc_award_distributions'],
-   '{"requires_tokens": false, "is_manual": true}'::jsonb);
+   ARRAY['jc_award_distributions']);
 
 -- =============================================
 -- 3. Progression Conditions Registry
@@ -177,6 +171,11 @@ COMMENT ON COLUMN progression_conditions.config_schema IS 'JSON Schema defining 
 -- Seed PR activity conditions
 INSERT INTO progression_conditions (condition_code, activity_type, display_name, description, evaluator_function, config_schema)
 VALUES 
+  ('first_review_submitted', 'pr-activity', 'First Review Submitted', 
+   'At least one reviewer has submitted a review (triggers posted → review_1)',
+   'eval_first_review_submitted',
+   '{"type": "object", "properties": {"round_number": {"type": "integer", "minimum": 1}}}'::jsonb),
+   
   ('min_reviewers_locked_in', 'pr-activity', 'Minimum Reviewers Locked In', 
    'At least N reviewers have submitted initial evaluations and locked in',
    'eval_min_reviewers_locked_in',
@@ -230,12 +229,8 @@ CREATE TABLE IF NOT EXISTS template_stage_graph (
   stage_type TEXT NOT NULL REFERENCES stage_types(stage_type_code) ON DELETE RESTRICT,
   stage_order INTEGER NOT NULL,  -- Display order (NOT execution order - graph edges determine that)
   
-  -- Stage configuration (overrides stage_type defaults)
-  stage_config JSONB DEFAULT '{}',
-  
   -- Deadline configuration
   deadline_days INTEGER,  -- NULL = no deadline
-  deadline_warning_days INTEGER DEFAULT 3,
   
   -- Display metadata
   display_name TEXT NOT NULL,
@@ -255,8 +250,7 @@ COMMENT ON COLUMN template_stage_graph.activity_type IS 'Which activity type thi
 COMMENT ON COLUMN template_stage_graph.stage_key IS 'Unique identifier for this stage within the template';
 COMMENT ON COLUMN template_stage_graph.stage_type IS 'Stage type (determines behavior and UI component)';
 COMMENT ON COLUMN template_stage_graph.stage_order IS 'Display order in UI (NOT execution order)';
-COMMENT ON COLUMN template_stage_graph.stage_config IS 'Stage-specific config (overrides stage_type defaults)';
-COMMENT ON COLUMN template_stage_graph.deadline_days IS 'Days until deadline (NULL = no deadline)';
+COMMENT ON COLUMN template_stage_graph.deadline_days IS 'Days until deadline (NULL = no deadline, warning logic in app layer)';
 COMMENT ON COLUMN template_stage_graph.is_initial_stage IS 'Is this the starting stage for new activities?';
 COMMENT ON COLUMN template_stage_graph.is_terminal_stage IS 'Is this an ending stage (no outgoing transitions)?';
 
@@ -280,7 +274,7 @@ CREATE TABLE IF NOT EXISTS template_stage_transitions (
   -- Transition behavior
   is_automatic BOOLEAN DEFAULT true,  -- false = requires manual trigger
   requires_confirmation BOOLEAN DEFAULT false,
-  transition_order INTEGER DEFAULT 0,  -- Evaluation order (for linear workflows)
+  transition_order INTEGER DEFAULT 0,  -- Evaluation order (currently always 1 for linear workflows; FUTURE: for admin branching)
   
   created_at TIMESTAMPTZ DEFAULT NOW(),
   
@@ -296,7 +290,7 @@ COMMENT ON COLUMN template_stage_transitions.from_stage_key IS 'Source stage';
 COMMENT ON COLUMN template_stage_transitions.to_stage_key IS 'Target stage';
 COMMENT ON COLUMN template_stage_transitions.condition_expression IS 'Condition expression tree with AND/OR/NOT support';
 COMMENT ON COLUMN template_stage_transitions.is_automatic IS 'Automatic (true) or manual (false) progression';
-COMMENT ON COLUMN template_stage_transitions.transition_order IS 'Evaluation order (check first transition first)';
+COMMENT ON COLUMN template_stage_transitions.transition_order IS 'Evaluation order (currently always 1 for linear workflows; FUTURE: for admin overrides like paused/cancelled/flagged states)';
 
 -- =============================================
 -- Indexes

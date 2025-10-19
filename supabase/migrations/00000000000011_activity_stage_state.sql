@@ -20,8 +20,8 @@ CREATE TABLE IF NOT EXISTS activity_stage_state (
   stage_entered_at TIMESTAMPTZ DEFAULT NOW(),
   stage_deadline TIMESTAMPTZ,  -- Calculated from template_stage_graph.deadline_days
   
-  -- Stage-specific runtime data
-  stage_runtime_data JSONB DEFAULT '{}',  -- Arbitrary key-value storage for stage state
+  -- Stage-specific runtime data (for analytics, NOT for business logic)
+  stage_runtime_data JSONB DEFAULT '{}',  -- Example: {"started_editing_at": "timestamp", "reviewers_joined": 3} - for analytics only
   
   -- Completion tracking
   is_completed BOOLEAN DEFAULT false,
@@ -39,7 +39,7 @@ COMMENT ON COLUMN activity_stage_state.activity_id IS 'Activity ID (polymorphic 
 COMMENT ON COLUMN activity_stage_state.current_stage_key IS 'Current stage key (references template_stage_graph.stage_key)';
 COMMENT ON COLUMN activity_stage_state.stage_entered_at IS 'When the activity entered this stage';
 COMMENT ON COLUMN activity_stage_state.stage_deadline IS 'Calculated deadline for current stage (NULL if no deadline)';
-COMMENT ON COLUMN activity_stage_state.stage_runtime_data IS 'Stage-specific runtime data (e.g., current_editor_id, lock_expires_at for assessment)';
+COMMENT ON COLUMN activity_stage_state.stage_runtime_data IS 'Analytics/metrics data for stage performance tracking (NOT for business logic - e.g., stage duration stats)';
 COMMENT ON COLUMN activity_stage_state.is_completed IS 'Whether the activity has completed its workflow';
 COMMENT ON COLUMN activity_stage_state.completed_at IS 'When the activity completed';
 
