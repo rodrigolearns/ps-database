@@ -113,16 +113,12 @@ CREATE POLICY jc_participants_modify_service_role_only ON jc_participants
   USING ((SELECT auth.role()) = 'service_role')
   WITH CHECK ((SELECT auth.role()) = 'service_role');
 
--- Permissions: Participants can see permissions for their activities
-CREATE POLICY jc_activity_permissions_select_participant ON jc_activity_permissions
+-- Permissions: Users can see their own permissions
+CREATE POLICY jc_activity_permissions_select_own ON jc_activity_permissions
   FOR SELECT
   USING (
+    -- Users can only see their own permission entries
     user_id = (SELECT auth_user_id()) OR
-    EXISTS (
-      SELECT 1 FROM jc_activity_permissions jap
-      WHERE jap.activity_id = jc_activity_permissions.activity_id
-      AND jap.user_id = (SELECT auth_user_id())
-    ) OR
     (SELECT auth.role()) = 'service_role'
   );
 

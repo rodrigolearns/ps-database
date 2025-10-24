@@ -231,7 +231,22 @@ BEGIN
     NULL  -- JC activities have no deadlines
   );
   
-  -- 4. Create initial timeline event
+  -- 4. Create permission for creator (CRITICAL: required for RLS access)
+  INSERT INTO jc_activity_permissions (
+    activity_id,
+    user_id,
+    role,
+    granted_at
+  )
+  VALUES (
+    v_activity_id,
+    p_creator_id,
+    'creator',
+    NOW()
+  )
+  ON CONFLICT (activity_id, user_id) DO NOTHING;  -- Handle duplicate gracefully
+  
+  -- 5. Create initial timeline event
   INSERT INTO jc_timeline_events (
     activity_id,
     event_type,
@@ -250,7 +265,7 @@ BEGIN
   )
   RETURNING event_id INTO v_timeline_event_id;
   
-  -- 5. Return result
+  -- 6. Return result
   RETURN jsonb_build_object(
     'activity_id', v_activity_id,
     'activity_uuid', v_activity_uuid,
@@ -260,7 +275,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
 
-COMMENT ON FUNCTION create_jc_activity IS 'Atomically creates JC activity with initial stage state and timeline event';
+COMMENT ON FUNCTION create_jc_activity IS 'Atomically creates JC activity with initial stage state, creator permission, and timeline event';
 
 -- Grant permissions
 GRANT EXECUTE ON FUNCTION create_jc_activity TO authenticated;

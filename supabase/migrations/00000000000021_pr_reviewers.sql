@@ -126,18 +126,14 @@ CREATE POLICY pr_reviewers_modify_service_role_only ON pr_reviewers
   USING ((SELECT auth.role()) = 'service_role')
   WITH CHECK ((SELECT auth.role()) = 'service_role');
 
--- PR Activity Permissions: Participants can see permissions for their activities
+-- PR Activity Permissions: Users can see their own permissions
 ALTER TABLE pr_activity_permissions ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY pr_activity_permissions_select_participant ON pr_activity_permissions
+CREATE POLICY pr_activity_permissions_select_own ON pr_activity_permissions
   FOR SELECT
   USING (
+    -- Users can only see their own permission entries
     user_id = (SELECT auth_user_id()) OR
-    EXISTS (
-      SELECT 1 FROM pr_activity_permissions pap
-      WHERE pap.activity_id = pr_activity_permissions.activity_id
-      AND pap.user_id = (SELECT auth_user_id())
-    ) OR
     (SELECT auth.role()) = 'service_role'
   );
 
