@@ -231,7 +231,24 @@ BEGIN
     NULL  -- JC activities have no deadlines
   );
   
-  -- 4. Create permission for creator (CRITICAL: required for RLS access)
+  -- 4. Add creator as participant (CRITICAL: required for get_user_jc_activities)
+  INSERT INTO jc_participants (
+    activity_id,
+    user_id,
+    is_creator,
+    invited_at,
+    joined_at
+  )
+  VALUES (
+    v_activity_id,
+    p_creator_id,
+    true,
+    NOW(),
+    NOW()
+  )
+  ON CONFLICT (activity_id, user_id) DO NOTHING;  -- Handle duplicate gracefully
+  
+  -- 5. Create permission for creator (CRITICAL: required for RLS access)
   INSERT INTO jc_activity_permissions (
     activity_id,
     user_id,
@@ -246,7 +263,7 @@ BEGIN
   )
   ON CONFLICT (activity_id, user_id) DO NOTHING;  -- Handle duplicate gracefully
   
-  -- 5. Create initial timeline event
+  -- 6. Create initial timeline event
   INSERT INTO jc_timeline_events (
     activity_id,
     event_type,
@@ -265,7 +282,7 @@ BEGIN
   )
   RETURNING event_id INTO v_timeline_event_id;
   
-  -- 6. Return result
+  -- 7. Return result
   RETURN jsonb_build_object(
     'activity_id', v_activity_id,
     'activity_uuid', v_activity_uuid,
