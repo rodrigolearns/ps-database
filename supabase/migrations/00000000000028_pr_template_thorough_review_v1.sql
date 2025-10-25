@@ -2,8 +2,8 @@
 -- 00000000000028_pr_template_thorough_review_v1.sql
 -- PR Template: Thorough Review (v1)
 -- =============================================
--- Two-round review: in-depth evaluation with author response between rounds
--- Workflow: review_1 → author_resp_1 → review_2 → assessment → awarding → publication_choice
+-- Two-round review: in-depth evaluation with author responses after each round
+-- Workflow: review_1 → author_resp_1 → review_2 → author_resp_2 → assessment → awarding → publication_choice
 
 -- 1. Create template record
 INSERT INTO pr_templates (name, user_facing_name, description, reviewer_count, total_tokens, insurance_tokens, is_public, display_order)
@@ -47,9 +47,10 @@ LATERAL (
     ('review_1', 'review_round_1', 1, 3, 'Round 1: Initial Review', false, false),
     ('author_resp_1', 'author_response_round_1', 2, 14, 'Author Response to Round 1', false, false),
     ('review_2', 'review_round_2', 3, 14, 'Round 2: Revision Review', false, false),
-    ('assessment', 'collaborative_assessment', 4, 3, 'Consensus Assessment', false, false),
-    ('awarding', 'award_distribution', 5, 3, 'Award Distribution', false, false),
-    ('publication_choice', 'publication_choice', 6, NULL, 'Publication Decision', false, true)
+    ('author_resp_2', 'author_response_round_2', 4, 14, 'Author Response to Round 2', false, false),
+    ('assessment', 'collaborative_assessment', 5, 3, 'Consensus Assessment', false, false),
+    ('awarding', 'award_distribution', 6, 3, 'Award Distribution', false, false),
+    ('publication_choice', 'publication_choice', 7, NULL, 'Publication Decision', false, true)
 ) AS stages(stage_key, stage_type, stage_order, deadline_days, display_name, is_initial_stage, is_terminal_stage)
 WHERE t.name = 'thorough_review_2_rounds_4_reviewers_20_tokens_v1'
 ON CONFLICT (template_id, activity_type, stage_key) DO NOTHING;
@@ -74,11 +75,14 @@ LATERAL (
     -- review_1 → author_resp_1 (when all round 1 reviews submitted)
     ('review_1', 'author_resp_1', '{"type": "all_reviews_submitted", "config": {"round_number": 1}}', true, 1),
     
-    -- author_resp_1 → review_2 (when author responds)
+    -- author_resp_1 → review_2 (when author responds to round 1)
     ('author_resp_1', 'review_2', '{"type": "author_response_submitted", "config": {"round_number": 1}}', true, 1),
     
-    -- review_2 → assessment (when all round 2 reviews submitted)
-    ('review_2', 'assessment', '{"type": "all_reviews_submitted", "config": {"round_number": 2}}', true, 1),
+    -- review_2 → author_resp_2 (when all round 2 reviews submitted)
+    ('review_2', 'author_resp_2', '{"type": "all_reviews_submitted", "config": {"round_number": 2}}', true, 1),
+    
+    -- author_resp_2 → assessment (when author responds to round 2)
+    ('author_resp_2', 'assessment', '{"type": "author_response_submitted", "config": {"round_number": 2}}', true, 1),
     
     -- assessment → awarding (when all finalized)
     ('assessment', 'awarding', '{"type": "all_finalized", "config": {}}', true, 1),

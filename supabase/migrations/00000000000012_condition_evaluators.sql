@@ -236,11 +236,12 @@ DECLARE
 BEGIN
   -- Count required participants and finalized (activity-type specific)
   IF p_activity_type = 'pr-activity' THEN
-    -- Get required reviewer count
-    SELECT pt.reviewer_count INTO v_required_count
-    FROM pr_activities pa
-    JOIN pr_templates pt ON pa.template_id = pt.template_id
-    WHERE pa.activity_id = p_activity_id;
+    -- Database as Source of Truth: Count ACTUAL reviewers, not template requirement
+    -- This ensures activities with fewer reviewers than template allows can still complete
+    SELECT COUNT(*) INTO v_required_count
+    FROM pr_reviewers
+    WHERE activity_id = p_activity_id
+      AND status IN ('joined', 'locked_in');
     
     -- Count finalized
     SELECT COUNT(*) INTO v_finalized_count
