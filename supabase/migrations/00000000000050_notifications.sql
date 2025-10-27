@@ -50,6 +50,57 @@ CREATE INDEX IF NOT EXISTS idx_user_notifications_activity ON user_notifications
 -- Helper Functions
 -- =============================================
 
+-- Create a user notification
+CREATE OR REPLACE FUNCTION create_user_notification(
+  p_user_id INTEGER,
+  p_activity_id INTEGER,
+  p_notification_type TEXT,
+  p_title TEXT,
+  p_message TEXT,
+  p_metadata JSONB DEFAULT '{}'::jsonb
+)
+RETURNS INTEGER AS $$
+DECLARE
+  v_notification_id INTEGER;
+  v_activity_type TEXT;
+BEGIN
+  -- Determine activity type based on notification type
+  IF p_notification_type LIKE 'jc_%' OR p_notification_type = 'journal_club_invitation' THEN
+    v_activity_type := 'jc-activity';
+  ELSIF p_notification_type LIKE 'pr_%' OR p_notification_type IN ('reviewer_invited', 'reviewer_joined', 'review_received') THEN
+    v_activity_type := 'pr-activity';
+  ELSE
+    v_activity_type := NULL;
+  END IF;
+
+  INSERT INTO user_notifications (
+    user_id,
+    related_activity_id,
+    related_activity_type,
+    notification_type,
+    title,
+    message,
+    metadata,
+    is_read,
+    created_at
+  )
+  VALUES (
+    p_user_id,
+    p_activity_id,
+    v_activity_type,
+    p_notification_type,
+    p_title,
+    p_message,
+    p_metadata,
+    false,
+    NOW()
+  )
+  RETURNING notification_id INTO v_notification_id;
+
+  RETURN v_notification_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
+
 -- Mark notifications as read
 CREATE OR REPLACE FUNCTION mark_notifications_read(
   p_user_id INTEGER,
@@ -96,6 +147,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
 
+GRANT EXECUTE ON FUNCTION create_user_notification TO authenticated;
 GRANT EXECUTE ON FUNCTION mark_notifications_read TO authenticated;
 GRANT EXECUTE ON FUNCTION get_user_notification_summary TO authenticated;
 

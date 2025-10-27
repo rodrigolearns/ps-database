@@ -6,19 +6,19 @@
 -- Manual progression (creator-controlled), no deadlines, invitation-only
 
 -- 1. Create template record
-INSERT INTO jc_templates (name, user_facing_name, description, max_reviewers, is_public, display_order)
+INSERT INTO jc_templates (name, user_facing_name, description, max_participants, is_public, display_order)
 VALUES (
   'jc_standard_v1',
   'Standard Journal Club',  -- User-facing display name
   'Review, collaborative assessment, and awards. Manual progression with no deadlines.',
-  999,   -- max_reviewers (unlimited)
+  999,   -- max_participants (unlimited)
   true,  -- is_public
   1      -- display_order
 )
 ON CONFLICT (name) DO UPDATE
   SET user_facing_name = EXCLUDED.user_facing_name,
       description = EXCLUDED.description,
-      max_reviewers = EXCLUDED.max_reviewers,
+      max_participants = EXCLUDED.max_participants,
       is_public = EXCLUDED.is_public,
       display_order = EXCLUDED.display_order,
       updated_at = NOW();

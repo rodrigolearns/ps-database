@@ -27,7 +27,7 @@ RETURNS TABLE (
   paper_title TEXT,
   current_stage_key TEXT,
   created_at TIMESTAMPTZ,
-  reviewer_count BIGINT,
+  participant_count BIGINT,
   is_creator BOOLEAN
 ) AS $$
 BEGIN

@@ -13,8 +13,8 @@ CREATE TABLE IF NOT EXISTS jc_templates (
   user_facing_name TEXT NOT NULL,  -- Display name: "Standard Journal Club"
   description TEXT,
   
-  -- Configuration (no reviewer count limit by default)
-  max_reviewers INTEGER DEFAULT 999,  -- Optional limit (999 = unlimited)
+  -- Configuration (no participant count limit by default)
+  max_participants INTEGER DEFAULT 999,  -- Optional limit (999 = unlimited)
   
   -- Template metadata
   is_active BOOLEAN DEFAULT true,
@@ -30,7 +30,7 @@ COMMENT ON COLUMN jc_templates.template_id IS 'Primary key for the template';
 COMMENT ON COLUMN jc_templates.name IS 'Internal template identifier (format: jc_{description}_v{N})';
 COMMENT ON COLUMN jc_templates.user_facing_name IS 'Display name shown to users (e.g., "Standard Journal Club")';
 COMMENT ON COLUMN jc_templates.description IS 'User-facing description of the template';
-COMMENT ON COLUMN jc_templates.max_reviewers IS 'Maximum reviewers allowed (999 = unlimited)';
+COMMENT ON COLUMN jc_templates.max_participants IS 'Maximum participants allowed (999 = unlimited)';
 COMMENT ON COLUMN jc_templates.is_active IS 'Whether template is active';
 COMMENT ON COLUMN jc_templates.is_public IS 'Whether users can select this template';
 COMMENT ON COLUMN jc_templates.display_order IS 'Order in template selection UI';
