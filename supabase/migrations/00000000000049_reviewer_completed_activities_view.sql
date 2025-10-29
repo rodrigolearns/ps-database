@@ -25,7 +25,7 @@ SELECT
   r.user_id
 FROM pr_activities a
 -- Join with activity stage state (SPRINT-7)
-INNER JOIN activity_stage_state ass ON a.activity_id = ass.activity_id
+INNER JOIN activity_stage_state ass ON a.activity_id = ass.activity_id AND ass.activity_type = 'pr-activity'
 -- Join with papers
 INNER JOIN papers p ON a.paper_id = p.paper_id
 -- Join with reviewers

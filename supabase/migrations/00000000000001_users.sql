@@ -140,12 +140,15 @@ COMMENT ON FUNCTION auth_user_id() IS 'Returns user_id for current authenticated
 -- Enable RLS on user_accounts
 ALTER TABLE user_accounts ENABLE ROW LEVEL SECURITY;
 
--- Users can read their own account or any account (public profiles)
+-- Authenticated users can read public profile info (username, full_name, thumbnails)
+-- Application layer should avoid exposing sensitive fields (email, auth_id) in public queries
 -- Service role can read all
 CREATE POLICY user_accounts_select_own_or_service ON user_accounts
   FOR SELECT
   USING (
-    (SELECT auth.uid()) = auth_id OR
+    -- Any authenticated user can read basic public profile info
+    (SELECT auth.uid()) IS NOT NULL OR
+    -- Service role can read everything
     (SELECT auth.role()) = 'service_role'
   );
 

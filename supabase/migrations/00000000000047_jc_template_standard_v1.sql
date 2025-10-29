@@ -39,10 +39,9 @@ SELECT
 FROM jc_templates t,
 LATERAL (
   VALUES
-    ('jc_created', 'jc_created', 0, NULL::INTEGER, 'Inviting Reviewers', true, false),
-    ('jc_review', 'jc_review', 1, NULL::INTEGER, 'Review Stage', false, false),
-    ('jc_assessment', 'jc_assessment', 2, NULL::INTEGER, 'Collaborative Assessment', false, false),
-    ('jc_awarding', 'jc_awarding', 3, NULL::INTEGER, 'Award Distribution', false, true)
+    ('jc_review', 'jc_review', 0, NULL::INTEGER, 'Review Stage', true, false),
+    ('jc_assessment', 'jc_assessment', 1, NULL::INTEGER, 'Collaborative Assessment', false, false),
+    ('jc_awarding', 'jc_awarding', 2, NULL::INTEGER, 'Award Distribution', false, true)
 ) AS stages(stage_key, stage_type, stage_order, deadline_days, display_name, is_initial_stage, is_terminal_stage)
 WHERE t.name = 'jc_standard_v1'
 ON CONFLICT (template_id, activity_type, stage_key) DO NOTHING;
@@ -61,9 +60,6 @@ SELECT
 FROM jc_templates t,
 LATERAL (
   VALUES
-    -- jc_created → jc_review (manual progression - creator decides when to start reviews)
-    ('jc_created', 'jc_review', '{"type": "manual", "config": {}}', false, 1),
-    
     -- jc_review → jc_assessment (manual progression - creator decides when reviews complete)
     ('jc_review', 'jc_assessment', '{"type": "manual", "config": {}}', false, 1),
     

@@ -169,3 +169,57 @@ CREATE POLICY activity_stage_state_select_participant_or_service ON activity_sta
     (SELECT auth.role()) = 'service_role'
   );
 
+-- =============================================
+-- Extend Papers RLS Policy for JC
+-- =============================================
+-- Add JC participant access to papers
+
+DROP POLICY IF EXISTS papers_select_own_or_contributor_or_participant_or_service ON papers;
+
+CREATE POLICY papers_select_own_or_contributor_or_participant_or_service ON papers
+  FOR SELECT
+  USING (
+    uploaded_by = (SELECT auth_user_id()) OR
+    (SELECT is_paper_contributor(paper_id)) OR
+    EXISTS (
+      SELECT 1 FROM pr_activity_permissions pap
+      JOIN pr_activities pa ON pa.activity_id = pap.activity_id
+      WHERE pa.paper_id = papers.paper_id
+      AND pap.user_id = (SELECT auth_user_id())
+    ) OR
+    EXISTS (
+      SELECT 1 FROM jc_participants jp
+      JOIN jc_activities ja ON ja.activity_id = jp.activity_id
+      WHERE ja.paper_id = papers.paper_id
+      AND jp.user_id = (SELECT auth_user_id())
+    ) OR
+    (SELECT auth.role()) = 'service_role'
+  );
+
+-- =============================================
+-- Extend File Storage RLS Policy for JC
+-- =============================================
+-- Add JC participant access to file_storage
+
+DROP POLICY IF EXISTS file_storage_select_own_or_public_or_participant_or_service ON file_storage;
+
+CREATE POLICY file_storage_select_own_or_public_or_participant_or_service ON file_storage
+  FOR SELECT
+  USING (
+    uploaded_by = (SELECT auth_user_id()) OR
+    is_public = true OR
+    EXISTS (
+      SELECT 1 FROM pr_activity_permissions pap
+      JOIN pr_activities pa ON pa.activity_id = pap.activity_id
+      WHERE pa.paper_id = file_storage.related_paper_id
+      AND pap.user_id = (SELECT auth_user_id())
+    ) OR
+    EXISTS (
+      SELECT 1 FROM jc_participants jp
+      JOIN jc_activities ja ON ja.activity_id = jp.activity_id
+      WHERE ja.paper_id = file_storage.related_paper_id
+      AND jp.user_id = (SELECT auth_user_id())
+    ) OR
+    (SELECT auth.role()) = 'service_role'
+  );
+
