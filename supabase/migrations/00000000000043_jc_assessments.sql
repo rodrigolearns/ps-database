@@ -83,9 +83,9 @@ CREATE POLICY jc_assessments_select_participant ON jc_assessments
   FOR SELECT
   USING (
     EXISTS (
-      SELECT 1 FROM jc_activity_permissions jap
-      WHERE jap.activity_id = jc_assessments.activity_id
-      AND jap.user_id = (SELECT auth_user_id())
+      SELECT 1 FROM jc_participants jp
+      WHERE jp.activity_id = jc_assessments.activity_id
+      AND jp.user_id = (SELECT auth_user_id())
     ) OR
     (SELECT auth.role()) = 'service_role'
   );
@@ -100,9 +100,9 @@ CREATE POLICY jc_finalization_status_select_participant ON jc_finalization_statu
   FOR SELECT
   USING (
     EXISTS (
-      SELECT 1 FROM jc_activity_permissions jap
-      WHERE jap.activity_id = jc_finalization_status.activity_id
-      AND jap.user_id = (SELECT auth_user_id())
+      SELECT 1 FROM jc_participants jp
+      WHERE jp.activity_id = jc_finalization_status.activity_id
+      AND jp.user_id = (SELECT auth_user_id())
     ) OR
     (SELECT auth.role()) = 'service_role'
   );

@@ -63,9 +63,9 @@ CREATE POLICY jc_timeline_events_select_participant ON jc_timeline_events
   FOR SELECT
   USING (
     EXISTS (
-      SELECT 1 FROM jc_activity_permissions jap
-      WHERE jap.activity_id = jc_timeline_events.activity_id
-      AND jap.user_id = (SELECT auth_user_id())
+      SELECT 1 FROM jc_participants jp
+      WHERE jp.activity_id = jc_timeline_events.activity_id
+      AND jp.user_id = (SELECT auth_user_id())
     ) OR
     (SELECT auth.role()) = 'service_role'
   );

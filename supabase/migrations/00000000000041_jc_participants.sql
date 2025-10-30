@@ -1,5 +1,5 @@
 -- =============================================
--- 00000000000041_jc_reviewers.sql
+-- 00000000000041_jc_participants.sql
 -- JC Activity Domain: Participants and Permissions
 -- =============================================
 -- Invitation-based participant system (no deadlines, no lock-in, creator can participate)
@@ -95,16 +95,11 @@ CREATE TRIGGER update_jc_participants_updated_at
 ALTER TABLE jc_participants ENABLE ROW LEVEL SECURITY;
 ALTER TABLE jc_activity_permissions ENABLE ROW LEVEL SECURITY;
 
--- Participants: Own memberships + activity participants see all
-CREATE POLICY jc_participants_select_own_or_participant ON jc_participants
+-- Participants: Self-contained policy (no recursion, like pr_activity_permissions)
+CREATE POLICY jc_participants_select_own ON jc_participants
   FOR SELECT
   USING (
     user_id = (SELECT auth_user_id()) OR
-    EXISTS (
-      SELECT 1 FROM jc_activity_permissions jap
-      WHERE jap.activity_id = jc_participants.activity_id
-      AND jap.user_id = (SELECT auth_user_id())
-    ) OR
     (SELECT auth.role()) = 'service_role'
   );
 
@@ -130,7 +125,7 @@ CREATE POLICY jc_activity_permissions_modify_service_role_only ON jc_activity_pe
 -- =============================================
 -- Extend JC Activities RLS Policy
 -- =============================================
--- Now that jc_activity_permissions exists, extend jc_activities SELECT policy
+-- Now that jc_participants exists, extend jc_activities SELECT policy
 
 DROP POLICY IF EXISTS jc_activities_select_creator_or_participant_or_service ON jc_activities;
 
@@ -139,9 +134,9 @@ CREATE POLICY jc_activities_select_participant_or_service ON jc_activities
   USING (
     creator_id = (SELECT auth_user_id()) OR
     EXISTS (
-      SELECT 1 FROM jc_activity_permissions jap
-      WHERE jap.activity_id = jc_activities.activity_id
-      AND jap.user_id = (SELECT auth_user_id())
+      SELECT 1 FROM jc_participants jp
+      WHERE jp.activity_id = jc_activities.activity_id
+      AND jp.user_id = (SELECT auth_user_id())
     ) OR
     (SELECT auth.role()) = 'service_role'
   );
@@ -162,9 +157,9 @@ CREATE POLICY activity_stage_state_select_participant_or_service ON activity_sta
       AND pap.user_id = (SELECT auth_user_id())
     )) OR
     (activity_type = 'jc-activity' AND EXISTS (
-      SELECT 1 FROM jc_activity_permissions jap
-      WHERE jap.activity_id = activity_stage_state.activity_id
-      AND jap.user_id = (SELECT auth_user_id())
+      SELECT 1 FROM jc_participants jp
+      WHERE jp.activity_id = activity_stage_state.activity_id
+      AND jp.user_id = (SELECT auth_user_id())
     )) OR
     (SELECT auth.role()) = 'service_role'
   );

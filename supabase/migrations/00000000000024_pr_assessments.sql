@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS pr_assessments (
   -- Assessment content (synced from Etherpad)
   assessment_content TEXT,  -- Latest content from Etherpad
   content_last_synced_at TIMESTAMPTZ,  -- When content was last synced
+  last_content_hash TEXT,  -- SHA-256 hash for change detection
   
   -- Finalization
   is_finalized BOOLEAN NOT NULL DEFAULT false,
@@ -37,6 +38,7 @@ COMMENT ON COLUMN pr_assessments.etherpad_pad_id IS 'Etherpad pad identifier for
 COMMENT ON COLUMN pr_assessments.etherpad_group_id IS 'Etherpad group identifier';
 COMMENT ON COLUMN pr_assessments.assessment_content IS 'Assessment content (synced from Etherpad periodically)';
 COMMENT ON COLUMN pr_assessments.content_last_synced_at IS 'When content was last synced from Etherpad';
+COMMENT ON COLUMN pr_assessments.last_content_hash IS 'SHA-256 hash of Etherpad content for change detection (auto-resets finalization)';
 COMMENT ON COLUMN pr_assessments.is_finalized IS 'Whether all reviewers have finalized';
 
 -- =============================================
@@ -67,6 +69,7 @@ COMMENT ON COLUMN pr_finalization_status.content_hash_at_finalization IS 'Conten
 -- =============================================
 CREATE INDEX IF NOT EXISTS idx_pr_assessments_activity ON pr_assessments (activity_id);
 CREATE INDEX IF NOT EXISTS idx_pr_assessments_pad_id ON pr_assessments (etherpad_pad_id) WHERE etherpad_pad_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_pr_assessments_content_hash ON pr_assessments (last_content_hash) WHERE last_content_hash IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_pr_finalization_activity ON pr_finalization_status (activity_id);
 CREATE INDEX IF NOT EXISTS idx_pr_finalization_reviewer ON pr_finalization_status (reviewer_id);
 CREATE INDEX IF NOT EXISTS idx_pr_finalization_activity_finalized ON pr_finalization_status (activity_id, is_finalized) WHERE is_finalized = true;
@@ -74,7 +77,7 @@ CREATE INDEX IF NOT EXISTS idx_pr_finalization_activity_finalized ON pr_finaliza
 -- Covering indexes
 CREATE INDEX IF NOT EXISTS idx_pr_assessments_activity_covering
 ON pr_assessments (activity_id)
-INCLUDE (assessment_id, assessment_content, is_finalized, finalized_at, etherpad_pad_id, updated_at, created_at);
+INCLUDE (assessment_id, assessment_content, is_finalized, finalized_at, etherpad_pad_id, last_content_hash, updated_at, created_at);
 
 CREATE INDEX IF NOT EXISTS idx_pr_finalization_status_activity_covering
 ON pr_finalization_status (activity_id)

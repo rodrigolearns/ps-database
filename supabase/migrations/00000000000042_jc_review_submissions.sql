@@ -52,15 +52,15 @@ CREATE TRIGGER update_jc_review_submissions_updated_at
 
 ALTER TABLE jc_review_submissions ENABLE ROW LEVEL SECURITY;
 
--- Reviewers see own, all participants see all reviews
+-- Participants can see all reviews in their activities
 CREATE POLICY jc_review_submissions_select_participant ON jc_review_submissions
   FOR SELECT
   USING (
     reviewer_id = (SELECT auth_user_id()) OR
     EXISTS (
-      SELECT 1 FROM jc_activity_permissions jap
-      WHERE jap.activity_id = jc_review_submissions.activity_id
-      AND jap.user_id = (SELECT auth_user_id())
+      SELECT 1 FROM jc_participants jp
+      WHERE jp.activity_id = jc_review_submissions.activity_id
+      AND jp.user_id = (SELECT auth_user_id())
     ) OR
     (SELECT auth.role()) = 'service_role'
   );

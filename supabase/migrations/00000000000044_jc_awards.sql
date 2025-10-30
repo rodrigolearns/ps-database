@@ -72,9 +72,9 @@ CREATE POLICY jc_award_distributions_select_participant ON jc_award_distribution
     giver_id = (SELECT auth_user_id()) OR
     receiver_id = (SELECT auth_user_id()) OR
     EXISTS (
-      SELECT 1 FROM jc_activity_permissions jap
-      WHERE jap.activity_id = jc_award_distributions.activity_id
-      AND jap.user_id = (SELECT auth_user_id())
+      SELECT 1 FROM jc_participants jp
+      WHERE jp.activity_id = jc_award_distributions.activity_id
+      AND jp.user_id = (SELECT auth_user_id())
     ) OR
     (SELECT auth.role()) = 'service_role'
   );
@@ -90,9 +90,9 @@ CREATE POLICY jc_award_distribution_status_select_participant ON jc_award_distri
   USING (
     participant_id = (SELECT auth_user_id()) OR
     EXISTS (
-      SELECT 1 FROM jc_activity_permissions jap
-      WHERE jap.activity_id = jc_award_distribution_status.activity_id
-      AND jap.user_id = (SELECT auth_user_id())
+      SELECT 1 FROM jc_participants jp
+      WHERE jp.activity_id = jc_award_distribution_status.activity_id
+      AND jp.user_id = (SELECT auth_user_id())
     ) OR
     (SELECT auth.role()) = 'service_role'
   );
