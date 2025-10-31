@@ -89,17 +89,41 @@ CREATE TRIGGER update_jc_participants_updated_at
   EXECUTE FUNCTION set_updated_at();
 
 -- =============================================
+-- Helper Functions (to avoid RLS recursion)
+-- =============================================
+
+-- Helper function to check if user is participant in activity (bypasses RLS)
+CREATE OR REPLACE FUNCTION user_is_jc_participant(p_activity_id INTEGER, p_user_id INTEGER)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM jc_participants
+    WHERE activity_id = p_activity_id
+    AND user_id = p_user_id
+  );
+END;
+$$;
+
+COMMENT ON FUNCTION user_is_jc_participant IS 'SECURITY DEFINER function to check participant status without RLS recursion';
+
+-- =============================================
 -- Row Level Security Policies
 -- =============================================
 
 ALTER TABLE jc_participants ENABLE ROW LEVEL SECURITY;
 ALTER TABLE jc_activity_permissions ENABLE ROW LEVEL SECURITY;
 
--- Participants: Self-contained policy (no recursion, like pr_activity_permissions)
-CREATE POLICY jc_participants_select_own ON jc_participants
+-- Participants: Users can see all participants in activities they are part of
+-- Uses helper function to avoid recursion
+CREATE POLICY jc_participants_select_all_in_activity ON jc_participants
   FOR SELECT
   USING (
-    user_id = (SELECT auth_user_id()) OR
+    -- Can see all participants in activities where you are a participant
+    user_is_jc_participant(jc_participants.activity_id, (SELECT auth_user_id())) OR
     (SELECT auth.role()) = 'service_role'
   );
 
